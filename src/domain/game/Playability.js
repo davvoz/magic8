@@ -3,9 +3,10 @@
  * (validation) and LegalMoves (UI highlighting, AI), so the two can never
  * disagree.
  *
- * Targeting rule of the slice: a creature whose on_play ability has no legal
- * target may still be played (the ability fizzles, expecting zero targets);
- * a spell with no legal target cannot be cast.
+ * Targeting rule: a card with a play ability that has no legal target cannot
+ * be played, whether it is a creature or a spell. A card never targets itself
+ * with its own play ability, so a lone creature cannot satisfy its own
+ * ally-targeted ability.
  */
 import { CommandError } from "../commands/CommandError.js";
 import { candidatesFor, validateChosenTargets } from "../effects/TargetResolver.js";
@@ -52,7 +53,7 @@ export function playabilityProblem(state, player, card, rules) {
   if (card.isCreature && player.creatures.length >= rules.maxBattlefieldCreatures) {
     return problem(CommandError.ZONE_FULL, `the battlefield already holds ${rules.maxBattlefieldCreatures} creatures`);
   }
-  if (card.definition.isSpell && targetOptionsFor(state, card).some((options) => options.length === 0)) {
+  if (targetOptionsFor(state, card).some((options) => options.length === 0)) {
     return problem(CommandError.INVALID_TARGET, `${card.definition.name} has no legal target`);
   }
   return null;
@@ -68,15 +69,13 @@ export function playabilityProblem(state, player, card, rules) {
  */
 export function splitChosenTargets(state, card, targetIds) {
   const abilities = playerTargetedPlayAbilities(card.definition);
-  const options = targetOptionsFor(state, card);
   const groups = [];
   let cursor = 0;
-  for (const [index, ability] of abilities.entries()) {
-    const expected = options[index].length === 0 && card.isCreature ? 0 : ability.target.count;
-    const group = targetIds.slice(cursor, cursor + expected);
-    cursor += expected;
+  for (const ability of abilities) {
+    const group = targetIds.slice(cursor, cursor + ability.target.count);
+    cursor += ability.target.count;
     const scope = { controllerId: card.controllerId, excludeId: card.instanceId };
-    const failure = expected === 0 ? null : validateChosenTargets(state, ability.target, group, scope);
+    const failure = validateChosenTargets(state, ability.target, group, scope);
     if (failure !== null) {
       return problem(CommandError.INVALID_TARGET, failure);
     }

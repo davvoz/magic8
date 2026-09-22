@@ -100,9 +100,6 @@ function boardFor(snapshot, me) {
  * @returns {string[]}
  */
 function chooseTargets(card, abilityIndex, options, board) {
-  if (options.length === 0) {
-    return [];
-  }
   const ability = card.abilities.filter((candidate) => candidate.target !== null)[abilityIndex];
   const creaturesById = new Map([...board.me.battlefield, ...board.enemy.battlefield].map((creature) => [creature.instanceId, creature]));
   const creatures = options.map((id) => creaturesById.get(id)).filter((creature) => creature !== undefined);

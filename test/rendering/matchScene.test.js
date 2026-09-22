@@ -165,6 +165,19 @@ describe("MatchInteraction", () => {
     assert.equal(interaction.mode, InteractionMode.IDLE);
   });
 
+  it("never opens targeting on a card with no legal target: the card is simply not playable", () => {
+    const { session } = sessionFromScenario({ p1: { hand: ["bone_colossus"], resources: 5 }, p2: {} });
+    session.start();
+    const snapshot = session.snapshotFor(P1);
+    const colossus = snapshot.players[0].hand[0].instanceId;
+    assert.deepEqual(snapshot.legalMoves.playableCardIds, [], "no ally to sacrifice");
+    const interaction = new MatchInteraction(P1);
+    interaction.sync(snapshot);
+    assert.equal(interaction.highlightFor(colossus), null);
+    assert.equal(interaction.tap(colossus), null);
+    assert.equal(interaction.mode, InteractionMode.IDLE, "tapping it must not strand the player in targeting");
+  });
+
   it("toggles attackers and assigns blockers in two taps", async () => {
     const { session, id } = sessionFromScenario({ p1: { battlefield: ["lava_brute", "steel_sentinel"] }, p2: { battlefield: ["cinder_hound"] } });
     session.start();

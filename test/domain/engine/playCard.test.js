@@ -139,18 +139,32 @@ describe("PLAY_CARD — targeting rules", () => {
     assert.equal(engine.execute(playCard(P1, warden, [id(P1, BF)])).ok, true);
   });
 
-  it("a creature with no legal target for its on_play may still be played; the ability fizzles", () => {
-    const { engine, id } = createScenario({ p1: { hand: ["forge_warden"], resources: 5 } });
-    const result = engine.execute(playCard(P1, id(P1, HAND)));
+  it("a creature with no legal target for its on_play cannot be played, exactly like a spell", () => {
+    const lone = createScenario({ p1: { hand: ["forge_warden"], resources: 5 } });
+    assert.equal(lone.engine.execute(playCard(P1, lone.id(P1, HAND))).error.code, CommandError.INVALID_TARGET, "no other ally to buff");
+    assert.deepEqual(lone.engine.getLegalMoves(P1).playableCardIds, []);
+
+    const { engine, id } = createScenario({ p1: { hand: ["forge_warden"], battlefield: ["scrap_golem"], resources: 5 } });
+    const result = engine.execute(playCard(P1, id(P1, HAND), [id(P1, BF)]));
     assert.equal(result.ok, true, JSON.stringify(result));
-    assert.equal(eventsOfType(result.value.events, GameEventType.STATS_MODIFIED).length, 0);
-    assert.equal(player(engine, P1).battlefield.length, 1);
+    assert.equal(eventsOfType(result.value.events, GameEventType.STATS_MODIFIED).length, 1, "the ally it buffed");
   });
 
   it("a spell with no legal target cannot be cast and is not listed as playable", () => {
     const { engine, id } = createScenario({ p1: { hand: ["quick_strike"], resources: 5 } });
     assert.equal(engine.execute(playCard(P1, id(P1, HAND))).error.code, CommandError.INVALID_TARGET);
     assert.deepEqual(engine.getLegalMoves(P1).playableCardIds, []);
+  });
+
+  it("a tribute creature needs a creature to sacrifice (Bone Colossus)", () => {
+    const lone = createScenario({ p1: { hand: ["bone_colossus"], resources: 5 } });
+    assert.deepEqual(lone.engine.getLegalMoves(P1).playableCardIds, [], "it may not eat itself");
+
+    const { engine, id } = createScenario({ p1: { hand: ["bone_colossus"], battlefield: ["grave_rat"], resources: 5 } });
+    assert.equal(engine.execute(playCard(P1, id(P1, HAND), [id(P1, BF)])).ok, true);
+    const me = player(engine, P1);
+    assert.deepEqual(me.battlefield.map((card) => card.definitionId), ["bone_colossus"]);
+    assert.equal(me.graveyard.some((card) => card.definitionId === "grave_rat"), true, "the tribute was paid");
   });
 
   it("Ash Raider pings a 1-health creature on entry and the creature dies", () => {

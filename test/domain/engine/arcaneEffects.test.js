@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { CommandError } from "../../../src/domain/commands/CommandError.js";
 import { endTurn, playCard } from "../../../src/domain/commands/commandFactories.js";
 import { GameEventType } from "../../../src/domain/game/GameEventType.js";
 import { ZoneType } from "../../../src/domain/game/ZoneType.js";
@@ -37,12 +38,10 @@ describe("return_to_hand", () => {
     assert.equal(replayed.summoningSick, true);
   });
 
-  it("a bounce creature without a legal target still enters and its ability fizzles (Spellbinder)", () => {
+  it("a bounce creature cannot be played while the opponent has no creature (Spellbinder)", () => {
     const { engine, id } = createScenario({ p1: { hand: ["spellbinder"], resources: 3 } });
-    const result = engine.execute(playCard(P1, id(P1, HAND)));
-    assert.equal(result.ok, true, JSON.stringify(result));
-    assert.equal(player(engine, P1).battlefield.length, 1);
-    assert.equal(eventsOfType(result.value.events, GameEventType.CARD_RETURNED).length, 0);
+    assert.equal(engine.execute(playCard(P1, id(P1, HAND))).error.code, CommandError.INVALID_TARGET);
+    assert.deepEqual(engine.getLegalMoves(P1).playableCardIds, [], "a body with nothing to bounce stays in hand");
   });
 });
 
