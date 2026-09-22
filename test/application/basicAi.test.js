@@ -36,6 +36,14 @@ describe("BasicAiController — main phase", () => {
     assert.deepEqual(ai.decide(face.engine.getSnapshot(P1)).targets, [P2], "colossus survives; go face");
   });
 
+  it("aims destroy and bounce at the strongest enemy creature", () => {
+    const destroy = createScenario({ p1: { hand: ["disintegrate"], battlefield: ["iron_colossus"], resources: 5 }, p2: { battlefield: ["ember_imp", "blazing_titan", "steel_sentinel"] } });
+    assert.deepEqual(ai.decide(destroy.engine.getSnapshot(P1)).targets, [destroy.id(P2, BF, 1)], "the titan, not its own colossus");
+
+    const bounce = createScenario({ p1: { hand: ["spellbinder"], resources: 3 }, p2: { battlefield: ["scrap_golem", "lava_brute"] } });
+    assert.deepEqual(ai.decide(bounce.engine.getSnapshot(P1)).targets, [bounce.id(P2, BF, 1)]);
+  });
+
   it("buffs its own strongest creature and heals its most damaged one", () => {
     const buff = createScenario({ p1: { hand: ["reinforce"], battlefield: ["scrap_golem", "lava_brute"], resources: 2 }, p2: { battlefield: ["ember_imp"] } });
     assert.deepEqual(ai.decide(buff.engine.getSnapshot(P1)).targets, [buff.id(P1, BF, 1)]);

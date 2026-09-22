@@ -1,10 +1,11 @@
 /**
  * Drives phase transitions according to PhaseTable and performs the work
- * that phases do on entry (start-of-turn readiness, resources and draw;
- * end-of-turn cleanup and hand limit). Combat damage is delegated to the
+ * that phases do on entry (start-of-turn readiness, resources, draw and
+ * on_turn_start triggers; end-of-turn cleanup and hand limit). Combat damage is delegated to the
  * `phaseWork` hook map so CombatSystem (Increment 4) can plug in without
  * TurnManager knowing about combat rules.
  */
+import { enqueueTurnStartTriggers } from "../effects/TriggerDispatcher.js";
 import { EmptyLibraryMode } from "../game/GameRules.js";
 import { GameEndReason, GameEventType } from "../game/GameEventType.js";
 import { GamePhase } from "../game/GamePhase.js";
@@ -140,6 +141,7 @@ export class TurnManager {
     if (!skipDraw) {
       this.drawCards(state, player, this.#rules.cardsDrawnPerTurn, context);
     }
+    enqueueTurnStartTriggers(state, context);
   }
 
   /**

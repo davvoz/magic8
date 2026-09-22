@@ -18,7 +18,7 @@ A strategic collectible card game engine written in vanilla JavaScript (ES2022 m
 
 ## Playing
 
-`npm run serve`, open http://127.0.0.1:8080/, **Play**, pick one of the eight bundled decks (Ember Vanguard, Ember Wildfire, Iron Legion, Iron Foundry, Shadow Pact, Grave Harvest, Verdant Grove, Wild Hunt) or your own, start. The opponent is a built-in AI playing one of the other decks.
+`npm run serve`, open http://127.0.0.1:8080/, **Play**, pick one of the ten bundled decks (Ember Vanguard, Ember Wildfire, Iron Legion, Iron Foundry, Shadow Pact, Grave Harvest, Verdant Grove, Wild Hunt, Arcane Conclave, Spire Bastion) or your own, start. The opponent is a built-in AI playing one of the other decks.
 
 | Action | Mouse / touch | Keyboard |
 |---|---|---|
@@ -34,7 +34,7 @@ The **Deck Builder** creates and edits decks (30–40 cards, up to 3 copies, one
 
 ## Look
 
-Everything on screen is drawn procedurally on the canvas: there are no image assets, no icon fonts and no symbol glyphs. Cards have a faction-toned bevelled frame with a gold rim, a cost gem, the name on a banner, an illustration window generated from a hash of the card's id (fire, steel, graveyard, grove or wilderness motif plus a creature sigil or spell rune circle — the same card always looks the same), a type ribbon, the rules text and attack/health gems with drawn sword and shield pictograms. The table, HUD (life crystal, resource orbs, card-stack counters), menus, buttons and modals share the same palette and display face, all defined in `data/ui/theme.json`.
+Everything on screen is drawn procedurally on the canvas: there are no image assets, no icon fonts and no symbol glyphs. Cards have a faction-toned bevelled frame with a gold rim, a cost gem, the name on a banner, an illustration window generated from a hash of the card's id (fire, steel, graveyard, grove, arcane spire or wilderness motif plus a creature sigil or spell rune circle — the same card always looks the same), a type ribbon, the rules text and attack/health gems with drawn sword and shield pictograms. The table, HUD (life crystal, resource orbs, card-stack counters), menus, buttons and modals share the same palette and display face, all defined in `data/ui/theme.json`.
 
 ## Layout
 
@@ -56,6 +56,6 @@ Dependency direction is `rendering → input → application → domain → shar
 
 ## Quality gates
 
-- `npm test`: 406 headless tests including engine fuzzing, determinism, architecture rules, scene flows against a real match session and the procedural visuals (layout, colour, art determinism, context state hygiene).
+- `npm test`: 418 headless tests including engine fuzzing, determinism, architecture rules, scene flows against a real match session and the procedural visuals (layout, colour, art determinism, context state hygiene).
 - `npm run lint`: ESLint rules mirroring the SonarQube checks in `docs/ARCHITECTURE.md` §1.7 (complexity ≤ 12, ≤ 4 params, no nested ternaries, no `eval`/`new Function`, …).
 - `sonar-project.properties` is ready for a SonarQube/SonarCloud scan (`sonar.javascript.lcov.reportPaths=coverage/lcov.info`); no scan has been run in this repository yet.

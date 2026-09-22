@@ -1,7 +1,7 @@
 /**
  * What an effect handler sees while resolving: the pending effect, the
  * materialised targets, the controlling player, and narrowly scoped ways to
- * change the world (damage, healing, drawing, emitting events). Handlers do
+ * change the world (damage, healing, drawing, zone moves, emitting events). Handlers do
  * not receive the ExecutionContext directly, which keeps their surface small
  * and reviewable.
  */
@@ -84,11 +84,57 @@ export class EffectContext {
    * @param {import("../cards/CardInstance.js").CardInstance} creature
    */
   sacrificeCreature(creature) {
-    if (creature.zone !== ZoneType.BATTLEFIELD || creature.health <= 0) {
+    this.#markLethal(creature, GameEventType.CREATURE_SACRIFICED);
+  }
+
+  /**
+   * Destroys a creature: the same pipeline as a sacrifice (lethal damage,
+   * then state-based actions and death triggers), announced as a destruction.
+   * @param {import("../cards/CardInstance.js").CardInstance} creature
+   */
+  destroyCreature(creature) {
+    this.#markLethal(creature, GameEventType.CREATURE_DESTROYED);
+  }
+
+  /**
+   * Moves a creature from the battlefield back to its owner's hand. Leaving
+   * the battlefield clears damage, modifiers and combat flags
+   * (CardInstance.moveTo); the hand limit applies at end of turn as it does
+   * for drawn cards. No-op off the battlefield.
+   * @param {import("../cards/CardInstance.js").CardInstance} creature
+   */
+  returnToHand(creature) {
+    if (creature.zone !== ZoneType.BATTLEFIELD) {
       return;
     }
-    creature.takeDamage(creature.health);
-    this.emit(GameEventType.CREATURE_SACRIFICED, { targetId: creature.instanceId, playerId: creature.controllerId });
+    const controller = this.state.requirePlayer(creature.controllerId);
+    const owner = this.state.requirePlayer(creature.ownerId);
+    controller.battlefield.remove(creature.instanceId);
+    creature.revertControl();
+    owner.hand.add(creature);
+    this.emit(GameEventType.CARD_RETURNED, { targetId: creature.instanceId, definitionId: creature.definitionId, playerId: owner.id });
+  }
+
+  /**
+   * Moves up to `amount` cards from the top of the player's library to their
+   * graveyard. An empty library simply stops the mill: fatigue is inflicted
+   * by draws only.
+   * @param {import("../game/Player.js").Player} player
+   * @param {number} amount
+   * @returns {number} cards actually milled
+   */
+  millCards(player, amount) {
+    let milled = 0;
+    while (milled < amount) {
+      const card = player.library.takeTop();
+      if (card === undefined) {
+        break;
+      }
+      player.graveyard.add(card);
+      this.emit(GameEventType.CARD_MILLED, { playerId: player.id, instanceId: card.instanceId, definitionId: card.definitionId });
+      milled += 1;
+    }
+    return milled;
   }
 
   /**
@@ -135,5 +181,19 @@ export class EffectContext {
    */
   drawCards(player, amount) {
     this.#execution.turnManager.drawCards(this.state, player, amount, this.#execution);
+  }
+
+  /**
+   * Gives a creature damage equal to its remaining health so state-based
+   * actions bury it; `eventType` says why. No-op off the battlefield.
+   * @param {import("../cards/CardInstance.js").CardInstance} creature
+   * @param {string} eventType
+   */
+  #markLethal(creature, eventType) {
+    if (creature.zone !== ZoneType.BATTLEFIELD || creature.health <= 0) {
+      return;
+    }
+    creature.takeDamage(creature.health);
+    this.emit(eventType, { targetId: creature.instanceId, playerId: creature.controllerId });
   }
 }

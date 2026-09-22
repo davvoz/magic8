@@ -1,0 +1,211 @@
+Quando si pensa a un card game strategico, la prima cosa che viene in mente sono probabilmente le carte, il campo di gioco, gli effetti, le animazioni, magari un sistema di combattimento e tutto quello che normalmente associamo all’interfaccia di un gioco di questo tipo. Ma se proviamo a togliere completamente la grafica, il canvas, il mouse e perfino il browser, quello che rimane è un problema molto più interessante: abbiamo uno stato, abbiamo delle regole, abbiamo dei giocatori che possono compiere determinate azioni in determinati momenti della partita, abbiamo effetti che modificano quello stato e abbiamo bisogno che ogni transizione sia valida, deterministica quando serve, osservabile e soprattutto coerente anche quando qualcosa va storto.
+
+È esattamente da questo problema che nasce Magic8.
+
+Magic8 è un piccolo motore per un collectible card game strategico scritto in JavaScript moderno, senza framework, senza React, senza librerie di rendering e senza un build system necessario per eseguirlo. L’interfaccia viene disegnata interamente su HTML5 Canvas e i contenuti delle carte, dei mazzi e delle regole sono separati dal codice che implementa il comportamento. Ma la parte interessante del progetto, almeno per me, non è il fatto di aver disegnato un card game dentro un canvas: è il modo in cui ho cercato di impedire che, crescendo, il progetto si trasformasse nel classico oggetto JavaScript gigantesco nel quale rendering, input, regole, stato, effetti e persistenza finiscono tutti per conoscersi reciprocamente.
+
+Perché questo tipo di progetto ha una caratteristica particolare: all’inizio è estremamente facile farlo funzionare.
+
+Puoi avere una funzione che riceve il click del giocatore, controlla quale carta è stata selezionata, modifica una proprietà dello stato, pesca una carta, aggiorna la vita dell’avversario e ridisegna il canvas. Funziona. Poi aggiungi una seconda carta, un secondo effetto, una fase diversa del turno, un’altra regola, un’abilità che può essere attivata soltanto durante il combattimento e magari un effetto che deve essere risolto dopo un altro effetto. Anche quello può essere fatto senza particolari difficoltà.
+
+Il problema arriva dopo.
+
+Arriva quando le regole cominciano a interagire tra loro, perché a quel punto ogni nuova funzionalità non aggiunge semplicemente codice: aggiunge nuove combinazioni possibili tra pezzi di codice che esistono già. Se la carta conosce il canvas, il canvas conosce lo stato, lo stato conosce la carta, l’input modifica direttamente lo stato e qualche funzione chiamata dal rendering decide anche se un’azione è legalmente consentita, ogni modifica comincia a produrre effetti collaterali in punti del programma che non sono immediatamente visibili.
+
+A quel punto il problema non è più implementare una nuova carta.
+
+Il problema diventa capire dove è autorizzato a esistere quel comportamento.
+
+Ed è questa la domanda architetturale fondamentale di Magic8.
+
+Il progetto è organizzato in livelli con responsabilità differenti, e la direzione delle dipendenze è deliberatamente vincolata: rendering verso input, input verso application, application verso domain, domain verso shared, mentre infrastructure implementa le porte utilizzate dall’application layer. Il dominio, quindi, non deve sapere di essere eseguito in un browser.
+
+Questa non è soltanto una scelta estetica.
+
+Nel dominio di Magic8 non dovrebbero comparire `window`, `document`, `localStorage`, `requestAnimationFrame`, Canvas, né API del browser utilizzate direttamente per prendere decisioni sulle regole del gioco. Anche il tempo e la casualità vengono trattati come dipendenze controllate invece di essere chiamati arbitrariamente dal codice di dominio.
+
+La ragione è molto concreta: se una regola del gioco dipendesse direttamente dal browser, quella regola sarebbe difficile da testare fuori dal browser, difficile da simulare e soprattutto difficile da riutilizzare in un contesto diverso. Se invece il dominio riceve ciò di cui ha bisogno attraverso contratti espliciti, posso eseguire lo stesso motore in un test Node, in una simulazione automatica di migliaia di partite oppure all’interno della partita reale, senza cambiare la logica che determina il risultato.
+
+Questo ci porta al centro dell’architettura, che è `GameEngine`.
+
+Nel progetto il motore viene trattato come l’unico mutatore dello stato di gioco. È una decisione molto importante, perché significa che non abbiamo oggetti sparsi nell’applicazione autorizzati a modificare direttamente il game state quando ne hanno bisogno. L’engine riceve un comando, verifica se quel comando è ammissibile e, se lo è, applica la transizione attraverso una pipeline controllata.
+
+Il comando passa prima dai controlli strutturali, poi viene verificato il giocatore, viene verificata l’esistenza del relativo handler, vengono controllati priorità e fase della partita e infine viene eseguita la validazione specifica del comando. Solo dopo questi passaggi il motore entra nella fase transazionale vera e propria.
+
+Ed è qui che secondo me il progetto diventa particolarmente interessante.
+
+Quando un comando deve modificare la partita, il motore non lavora direttamente sullo stato già committato. Crea una copia, esegue l’operazione sulla copia, risolve la coda degli effetti, applica le eventuali state-based actions e lascia che il sistema completi le transizioni automatiche previste dalle regole. Soltanto quando l’intero processo è terminato con successo, quella nuova versione dello stato viene resa effettiva.
+
+Se qualcosa lancia un’eccezione durante questa procedura, la copia viene semplicemente abbandonata.
+
+Questo introduce nel game engine una proprietà molto utile: lo stato committato non dovrebbe rimanere in una situazione parzialmente applicata perché una parte della risoluzione è riuscita e quella successiva è fallita.
+
+Immaginiamo, per esempio, un effetto che modifica contemporaneamente più elementi della partita e che durante la risoluzione incontra un errore. Se stessimo modificando direttamente lo stato reale, potremmo ritrovarci con metà dell’operazione applicata e metà no. A quel punto il gioco potrebbe trovarsi in uno stato che nessuna regola prevede.
+
+Con il modello transazionale, invece, la modifica è una proposta di nuovo stato che diventa reale soltanto quando l’intera transizione è stata completata.
+
+Questa scelta è particolarmente utile anche per i test, perché permette di ragionare sulle operazioni del motore come transizioni atomiche: dato uno stato iniziale e un comando valido, ottengo un nuovo stato e una sequenza di eventi; se l’operazione non può essere completata, lo stato precedente rimane quello committato.
+
+Ma per fare questo in modo ordinato bisogna prima impedire che ogni comando conosca ogni altro comando possibile.
+
+Per questo esiste `CommandRegistry`.
+
+I comandi sono registrati attraverso handler che rispettano un contratto comune, e il registry associa il tipo del comando al comportamento che deve eseguirlo. L’engine non deve quindi contenere una lunga catena di `if` o `switch` che cresce ogni volta che viene introdotta una nuova azione.
+
+Questo è un dettaglio apparentemente semplice, ma ha una conseguenza importante: l’aggiunta di una nuova capacità del gioco tende a diventare un’estensione del sistema invece di una modifica trasversale del suo nucleo.
+
+Lo stesso principio viene applicato agli effetti.
+
+Nel gioco una carta può dichiarare che, quando accade qualcosa, deve essere risolto un determinato effetto con determinati parametri. Ma i dati della carta non contengono il codice che esegue quell’effetto.
+
+Il tipo dell’effetto viene risolto attraverso `EffectRegistry`.
+
+Questo crea una separazione molto netta tra contenuto e comportamento. I dati possono dire, per esempio, quale effetto deve essere applicato e con quali parametri, mentre la logica che sa realmente cosa significhi quell’effetto rimane nel codice.
+
+Questa distinzione è importante anche per la validazione dei contenuti, perché un JSON non dovrebbe poter introdurre arbitrariamente un nuovo comportamento nel motore. Gli effetti disponibili sono quelli registrati nel sistema e i loro parametri vengono verificati secondo lo schema previsto.
+
+In altre parole, i dati possono descrivere il comportamento che il motore conosce, ma non possono inventare nuovo codice da eseguire.
+
+È un principio che diventa ancora più importante quando si parla di sicurezza.
+
+Magic8 è un gioco eseguito lato client, quindi sarebbe scorretto raccontarlo come se il browser fosse un ambiente affidabile contro il giocatore che possiede quel browser. Non lo è. Se il client possiede il codice e lo stato necessari a giocare, un utente sufficientemente motivato può modificarne il comportamento.
+
+Quello che l’architettura può fare, però, è evitare di trasformare questa realtà in un motivo per costruire codice fragile. Le informazioni esterne vengono validate, i comandi vengono verificati dall’engine, gli effetti disponibili sono registrati e controllati, e nel dominio non vengono utilizzati meccanismi come `eval` o `new Function` per trasformare dati in codice eseguibile.
+
+La sicurezza qui non significa promettere che un gioco client-side sia inattaccabile.
+
+Significa ridurre la superficie di comportamento implicito e fare in modo che il sistema abbia confini comprensibili.
+
+E c’è un altro confine fondamentale: quello tra stato interno e informazioni che un giocatore ha effettivamente il diritto di conoscere.
+
+L’engine non consegna direttamente le proprie entità ai livelli superiori. Espone snapshot.
+
+Uno snapshot rappresenta lo stato osservabile della partita in un determinato momento e può essere costruito rispetto alla prospettiva di uno specifico giocatore. Questo permette di redigere le informazioni private quando necessario: per esempio, gli eventi relativi alla pesca di una carta possono contenere informazioni che non devono essere esposte a un avversario.
+
+La differenza tra uno stato interno e uno snapshot è quindi fondamentale.
+
+Lo stato interno appartiene al motore.
+
+Lo snapshot appartiene all’osservatore.
+
+Questa distinzione permette inoltre all’AI di utilizzare esattamente la stessa interfaccia concettuale di un giocatore umano.
+
+La classe `MatchSession` gestisce infatti la partita in esecuzione sopra l’engine e mantiene un controller per ogni posto al tavolo. Quando l’engine è in attesa di un giocatore umano, il comando può arrivare dall’interfaccia. Quando invece è in attesa di un giocatore controllato dall’AI, `MatchSession` chiede al relativo controller di produrre un comando.
+
+La cosa interessante è che l’AI non riceve lo stato onnisciente della partita.
+
+Riceve lo snapshot relativo al proprio giocatore.
+
+Quindi l’AI non dispone di una scorciatoia architetturale che le permetta di vedere le informazioni che un giocatore reale non dovrebbe conoscere. E soprattutto, una volta prodotto il comando, quel comando non viene applicato attraverso un percorso speciale riservato all’intelligenza artificiale: viene inviato allo stesso engine che gestisce i comandi umani.
+
+Questo significa che la validazione delle regole rimane concentrata nello stesso punto.
+
+Se un controller AI restituisce un comando illegale, se genera un errore o se non riesce a produrre una decisione valida, `MatchSession` può gestire il problema secondo le regole previste, fino ad abbandonare la partita per quel posto e concedere.
+
+Anche questo è un dettaglio che sembra secondario finché non si prova a costruire un sistema realmente estensibile: avere AI e giocatore umano che attraversano lo stesso command path evita di duplicare la logica delle regole.
+
+A questo punto abbiamo il dominio e abbiamo l’application layer, ma manca ancora qualcosa di apparentemente banale: come facciamo a trasformare tutto questo in un gioco che si muove sullo schermo?
+
+Qui entra in gioco il rendering.
+
+Magic8 usa esclusivamente HTML5 Canvas e non utilizza immagini delle carte come asset grafici fondamentali. Una parte dell’aspetto visuale viene costruita proceduralmente, e il tema contiene i parametri utilizzati per determinare l’identità visiva delle carte.
+
+Questo permette di mantenere il rendering separato dalla definizione delle regole.
+
+Una carta non deve sapere come viene disegnata.
+
+Il renderer riceve ciò che deve rappresentare e decide come trasformarlo in pixel.
+
+È una distinzione fondamentale perché impedisce alla presentazione di diventare un secondo motore delle regole. Il canvas mostra il risultato delle decisioni del dominio, ma non dovrebbe essere il luogo in cui quelle decisioni vengono prese.
+
+Lo stesso principio si applica all’input.
+
+Il click o il gesto dell’utente non dovrebbe tradursi direttamente in una mutazione del game state. L’input viene interpretato, trasformato in un’intenzione e infine quella intenzione diventa un comando destinato all’application layer e al motore.
+
+In questo modo la catena concettuale rimane abbastanza pulita:
+
+l’utente compie un’azione, l’input la interpreta, l’applicazione coordina, il dominio decide se è valida, l’engine modifica lo stato e il rendering mostra il nuovo risultato.
+
+Il percorso inverso è altrettanto importante: il renderer non decide cosa è vero.
+
+Rappresenta ciò che il sistema ha deciso essere vero.
+
+Anche il game loop segue questa filosofia.
+
+`GameLoop` utilizza `requestAnimationFrame`, ma questa dipendenza dal browser rimane confinata al livello appropriato. Inoltre il loop utilizza un dirty flag, quindi l’operazione di rendering può essere evitata quando non è necessario ridisegnare la scena.
+
+È una piccola ottimizzazione, ma soprattutto è un altro esempio della separazione delle responsabilità: il tempo di esecuzione e il scheduling appartengono alla parte infrastrutturale e di presentazione, non alle regole del gioco.
+
+E proprio questa separazione rende possibile una delle caratteristiche che mi interessavano maggiormente nel progetto: poter eseguire il motore senza il gioco grafico.
+
+Il repository include test headless e una simulazione automatica delle partite, e il motore utilizza un seed intero per inizializzare una sorgente di casualità controllata. Questo rende possibile riprodurre scenari che altrimenti sarebbero difficili da diagnosticare.
+
+In un gioco di carte la casualità è ovviamente necessaria, ma casualità e imprevedibilità non sono la stessa cosa dal punto di vista dell’ingegneria del software.
+
+Se una partita viene generata con un determinato seed, posso utilizzare quello stesso seed per riprodurre la sequenza di decisioni casuali e quindi investigare un comportamento che altrimenti potrebbe essere scomparso nel momento stesso in cui provo a debuggare il problema.
+
+È qui che un gioco diventa anche un sistema simulabile.
+
+E la simulazione apre un’altra possibilità: non limitarsi a giocare manualmente per capire se le regole funzionano, ma eseguire moltissime partite automaticamente e osservare il comportamento del sistema.
+
+Questo è particolarmente interessante per un card game perché il numero di interazioni cresce molto rapidamente. Una carta può funzionare perfettamente isolata e produrre invece un comportamento problematico quando viene combinata con altre carte, altri effetti, altre fasi e altri stati della partita.
+
+Per questo nel progetto i test non sono pensati soltanto come test di singole funzioni. L’architettura stessa viene verificata, e il repository contiene test dedicati alle diverse aree del sistema, inclusi determinismo, fuzzing dell’engine, flussi delle scene e vincoli architetturali.
+
+Questo ultimo punto per me è particolarmente importante.
+
+Perché un’architettura documentata non è ancora necessariamente un’architettura rispettata.
+
+Se scrivo in un documento che il dominio non deve dipendere dal browser, ma dopo sei mesi una nuova classe importa `window` direttamente nel dominio, la documentazione continua a raccontare una storia che il codice non racconta più.
+
+Per questo Magic8 include anche test architetturali che verificano alcune delle regole strutturali del progetto, come la direzione delle dipendenze e l’assenza di determinate dipendenze ambientali nel dominio.
+
+La cosa interessante è che tutto questo è stato fatto senza introdurre un framework architetturale che mi costringa a seguire una particolare filosofia.
+
+Il progetto è Vanilla JavaScript.
+
+E proprio per questo molte delle cose che normalmente vengono delegate a framework o container devono essere esplicitate direttamente nel codice.
+
+Il punto centrale è `main.js`, che funziona come composition root.
+
+È sostanzialmente il luogo nel quale il sistema viene assemblato: infrastruttura, repository, servizi applicativi, rendering, input, scene e game loop vengono collegati lì.
+
+`main.js` conosce i diversi livelli proprio perché il suo compito è comporli, mentre i singoli componenti non hanno bisogno di conoscere l’intera applicazione.
+
+È una forma molto concreta di dependency inversion: invece di avere ogni oggetto che crea direttamente le proprie dipendenze, le dipendenze vengono costruite al bordo del sistema e poi iniettate dove servono.
+
+Non c’è magia.
+
+Non c’è un container che analizza il progetto e decide automaticamente cosa istanziare.
+
+C’è codice esplicito che costruisce il sistema.
+
+E questa, alla fine, è probabilmente la parte più interessante di Magic8.
+
+Perché tecnicamente sarebbe stato molto più semplice costruire un card game mettendo tutto insieme in un’applicazione JavaScript relativamente compatta. Sarebbe stato possibile farlo funzionare molto prima, con molto meno codice iniziale e probabilmente con un risultato visibile molto più rapidamente.
+
+Ma il problema che mi interessava esplorare non era soltanto arrivare al punto in cui una carta viene pescata e un’altra carta perde punti vita.
+
+Mi interessava capire cosa succede quando quel gioco comincia a diventare un sistema.
+
+Quando le regole aumentano, quando gli effetti si combinano, quando compare un’intelligenza artificiale, quando voglio eseguire migliaia di partite senza aprire il browser, quando devo riprodurre una situazione casuale, quando voglio cambiare completamente il renderer, quando devo impedire che un dato di configurazione diventi codice arbitrario e quando voglio poter modificare una parte del progetto senza dover contemporaneamente comprendere tutto il resto.
+
+A quel punto l’architettura smette di essere un esercizio teorico.
+
+Diventa un modo per controllare la complessità.
+
+E questo è il motivo per cui Magic8 non è, almeno per me, particolarmente interessante perché è un clone di un card game famoso o perché utilizza Canvas invece di un framework frontend.
+
+La cosa interessante è che dietro una superficie apparentemente semplice c’è un sistema nel quale il dominio non sa nulla del browser, le modifiche allo stato passano attraverso un unico motore, i comandi sono registrati attraverso contratti espliciti, gli effetti sono separati dai dati, lo stato interno viene trasformato in snapshot osservabili, l’AI utilizza la stessa pipeline dei giocatori umani, la casualità può essere riprodotta, il rendering rimane una preoccupazione separata e i confini architetturali vengono verificati automaticamente.
+
+E tutto questo gira in JavaScript senza che JavaScript debba diventare necessariamente sinonimo di una gigantesca applicazione frontend.
+
+Alla fine, quando guardiamo il gioco sul canvas, vediamo semplicemente delle carte che si muovono, dei numeri che cambiano, dei turni che avanzano e degli effetti che vengono risolti.
+
+Ma quella è soltanto la superficie.
+
+Sotto c’è una macchina che prende decisioni attraverso comandi, produce transizioni di stato, risolve effetti, protegge i propri invarianti e permette a più tipi di giocatore di interagire con lo stesso modello di gioco.
+
+Ed è proprio questa macchina che mi interessava costruire.
+
+Non soltanto un gioco che funziona, quindi, ma un sistema nel quale sia ancora possibile capire perché funziona anche quando il numero delle regole, delle carte e delle interazioni comincia a diventare molto più grande di quello che avevo immaginato all’inizio.

@@ -112,6 +112,11 @@ export class CardInstance {
     return healed;
   }
 
+  /** Control reverts to the owner: used when the card leaves the battlefield for the owner's hand. */
+  revertControl() {
+    this.controllerId = this.ownerId;
+  }
+
   /** Clears the "acted this turn" and "entered this turn" flags. */
   ready() {
     this.exhausted = false;

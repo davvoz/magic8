@@ -4,7 +4,7 @@
   "maxSize": 40,
   "maxCopies": 3,
   "allowedTypes": ["creature", "spell"],
-  "factions": ["ember", "iron", "shadow", "verdant", "neutral"],
+  "factions": ["ember", "iron", "shadow", "verdant", "arcane", "neutral"],
   "factionRule": { "mode": "any", "neutral": "neutral" },
   "maxSavedDecks": 50,
   "deckNameMaxLength": 30

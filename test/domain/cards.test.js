@@ -189,6 +189,21 @@ describe("validateCardDefinition — rejected input", () => {
     assert.equal(validateCardDefinition(raw, context).ok, true);
   });
 
+  it("allows on_turn_start only on creatures and only with automatic targets", () => {
+    const raw = creature();
+    raw.abilities = [{ trigger: "on_turn_start", effect: "mill", params: { amount: 1 }, target: { kind: "player", owner: "enemy" } }];
+    assert.equal(validateCardDefinition(raw, context).ok, true);
+
+    raw.abilities[0].target = { kind: "creature", owner: "enemy" };
+    assert.ok(problemsOf(raw).some((p) => p.includes("accepts only player")), "mill targets players only");
+    raw.abilities[0] = { trigger: "on_turn_start", effect: "return_to_hand", target: { kind: "creature", owner: "enemy" } };
+    assert.ok(problemsOf(raw).some((p) => p.includes("cannot ask the player for a target")));
+
+    const onSpell = spell();
+    onSpell.abilities = [{ trigger: "on_turn_start", effect: "draw_card", params: { amount: 1 } }];
+    assert.ok(problemsOf(onSpell).some((p) => p.includes('"on_turn_start" is not valid on spell cards')));
+  });
+
   it("caps abilities and keywords and rejects duplicate keywords", () => {
     const many = creature();
     many.abilities = Array.from({ length: 5 }, () => ({ trigger: "on_play", effect: "draw_card", params: { amount: 1 } }));
@@ -242,7 +257,7 @@ describe("EffectRegistry", () => {
     assert.throws(() => registry.register({ type: "x", targeting: Targeting.NONE, params: {}, resolve }), /already registered/);
   });
 
-  it("exposes the seven core effects", () => {
-    assert.deepEqual([...createCoreEffectRegistry().types()].sort(), ["deal_damage", "discard", "drain", "draw_card", "heal", "modify_stats", "sacrifice"]);
+  it("exposes the ten core effects", () => {
+    assert.deepEqual([...createCoreEffectRegistry().types()].sort(), ["deal_damage", "destroy", "discard", "drain", "draw_card", "heal", "mill", "modify_stats", "return_to_hand", "sacrifice"]);
   });
 });

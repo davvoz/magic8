@@ -1303,6 +1303,313 @@
         }
       ],
       "text": "Draw two cards and heal 2 on yourself."
+    },
+    {
+      "id": "arcane_apprentice",
+      "name": "Arcane Apprentice",
+      "type": "creature",
+      "faction": "arcane",
+      "cost": 1,
+      "attack": 1,
+      "health": 2,
+      "text": "Every archmage once swept the tower stairs."
+    },
+    {
+      "id": "phase_wisp",
+      "name": "Phase Wisp",
+      "type": "creature",
+      "faction": "arcane",
+      "cost": 2,
+      "attack": 2,
+      "health": 1,
+      "keywords": [
+        "haste"
+      ],
+      "text": "Haste. It is already where it is going."
+    },
+    {
+      "id": "rune_scribe",
+      "name": "Rune Scribe",
+      "type": "creature",
+      "faction": "arcane",
+      "cost": 2,
+      "attack": 1,
+      "health": 3,
+      "abilities": [
+        {
+          "trigger": "on_play",
+          "effect": "mill",
+          "params": {
+            "amount": 2
+          },
+          "target": {
+            "kind": "player",
+            "owner": "enemy",
+            "count": 1
+          }
+        }
+      ],
+      "text": "When it enters, the top two cards of the opponent's library go to their graveyard."
+    },
+    {
+      "id": "spellbinder",
+      "name": "Spellbinder",
+      "type": "creature",
+      "faction": "arcane",
+      "cost": 3,
+      "attack": 1,
+      "health": 2,
+      "abilities": [
+        {
+          "trigger": "on_play",
+          "effect": "return_to_hand",
+          "target": {
+            "kind": "creature",
+            "owner": "enemy",
+            "count": 1
+          }
+        }
+      ],
+      "text": "When it enters, return an enemy creature to its owner's hand."
+    },
+    {
+      "id": "mind_sifter",
+      "name": "Mind Sifter",
+      "type": "creature",
+      "faction": "arcane",
+      "cost": 3,
+      "attack": 1,
+      "health": 5,
+      "abilities": [
+        {
+          "trigger": "on_turn_start",
+          "effect": "mill",
+          "params": {
+            "amount": 1
+          },
+          "target": {
+            "kind": "player",
+            "owner": "enemy",
+            "count": 1
+          }
+        }
+      ],
+      "text": "At the start of your turn, the opponent's top library card goes to their graveyard."
+    },
+    {
+      "id": "astral_owl",
+      "name": "Astral Owl",
+      "type": "creature",
+      "faction": "arcane",
+      "cost": 4,
+      "attack": 3,
+      "health": 2,
+      "abilities": [
+        {
+          "trigger": "on_play",
+          "effect": "draw_card",
+          "params": {
+            "amount": 1
+          }
+        }
+      ],
+      "text": "When Astral Owl enters the battlefield, draw a card."
+    },
+    {
+      "id": "banishing_mage",
+      "name": "Banishing Mage",
+      "type": "creature",
+      "faction": "arcane",
+      "cost": 5,
+      "attack": 3,
+      "health": 3,
+      "abilities": [
+        {
+          "trigger": "on_play",
+          "effect": "return_to_hand",
+          "target": {
+            "kind": "creature",
+            "owner": "enemy",
+            "count": 1
+          }
+        }
+      ],
+      "text": "When it enters, return an enemy creature to its owner's hand."
+    },
+    {
+      "id": "storm_djinn",
+      "name": "Storm Djinn",
+      "type": "creature",
+      "faction": "arcane",
+      "cost": 5,
+      "attack": 4,
+      "health": 4,
+      "keywords": [
+        "haste"
+      ],
+      "text": "Haste. It arrives with the thunder."
+    },
+    {
+      "id": "void_conjurer",
+      "name": "Void Conjurer",
+      "type": "creature",
+      "faction": "arcane",
+      "cost": 6,
+      "attack": 2,
+      "health": 3,
+      "abilities": [
+        {
+          "trigger": "on_play",
+          "effect": "destroy",
+          "target": {
+            "kind": "creature",
+            "owner": "enemy",
+            "count": 1
+          }
+        }
+      ],
+      "text": "When it enters, destroy an enemy creature."
+    },
+    {
+      "id": "archmage_of_the_spire",
+      "name": "Archmage of the Spire",
+      "type": "creature",
+      "faction": "arcane",
+      "cost": 7,
+      "attack": 5,
+      "health": 5,
+      "abilities": [
+        {
+          "trigger": "on_play",
+          "effect": "return_to_hand",
+          "target": {
+            "kind": "creature",
+            "owner": "enemy",
+            "count": 1
+          }
+        },
+        {
+          "trigger": "on_play",
+          "effect": "draw_card",
+          "params": {
+            "amount": 1
+          }
+        }
+      ],
+      "text": "When it enters, return an enemy creature to its owner's hand and draw a card."
+    },
+    {
+      "id": "unsummon",
+      "name": "Unsummon",
+      "type": "spell",
+      "faction": "arcane",
+      "cost": 2,
+      "abilities": [
+        {
+          "trigger": "on_cast",
+          "effect": "return_to_hand",
+          "target": {
+            "kind": "creature",
+            "owner": "enemy",
+            "count": 1
+          }
+        }
+      ],
+      "text": "Return an enemy creature to its owner's hand."
+    },
+    {
+      "id": "arcane_insight",
+      "name": "Arcane Insight",
+      "type": "spell",
+      "faction": "arcane",
+      "cost": 2,
+      "abilities": [
+        {
+          "trigger": "on_cast",
+          "effect": "draw_card",
+          "params": {
+            "amount": 2
+          }
+        },
+        {
+          "trigger": "on_cast",
+          "effect": "mill",
+          "params": {
+            "amount": 2
+          },
+          "target": {
+            "kind": "player",
+            "owner": "enemy",
+            "count": 1
+          }
+        }
+      ],
+      "text": "Draw two cards. The top two cards of the opponent's library go to their graveyard."
+    },
+    {
+      "id": "mind_drain",
+      "name": "Mind Drain",
+      "type": "spell",
+      "faction": "arcane",
+      "cost": 2,
+      "abilities": [
+        {
+          "trigger": "on_cast",
+          "effect": "mill",
+          "params": {
+            "amount": 4
+          },
+          "target": {
+            "kind": "player",
+            "owner": "enemy",
+            "count": 1
+          }
+        }
+      ],
+      "text": "The top four cards of the opponent's library go to their graveyard."
+    },
+    {
+      "id": "frost_bind",
+      "name": "Frost Bind",
+      "type": "spell",
+      "faction": "arcane",
+      "cost": 2,
+      "abilities": [
+        {
+          "trigger": "on_cast",
+          "effect": "modify_stats",
+          "params": {
+            "attack": -2,
+            "health": -2,
+            "duration": "end_of_turn"
+          },
+          "target": {
+            "kind": "creature",
+            "owner": "enemy",
+            "count": 1
+          }
+        }
+      ],
+      "text": "An enemy creature gets -2/-2 until end of turn."
+    },
+    {
+      "id": "disintegrate",
+      "name": "Disintegrate",
+      "type": "spell",
+      "faction": "arcane",
+      "cost": 5,
+      "abilities": [
+        {
+          "trigger": "on_cast",
+          "effect": "destroy",
+          "target": {
+            "kind": "creature",
+            "owner": "enemy",
+            "count": 1
+          }
+        }
+      ],
+      "text": "Destroy an enemy creature."
     }
   ]
 }

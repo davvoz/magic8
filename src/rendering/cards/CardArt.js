@@ -1,7 +1,7 @@
 /**
  * Procedural card illustrations. There are no image assets: each faction
  * has a painter that fills the art window with its motif (fire, steel,
- * graveyard, grove, wilderness), and a type emblem (a sigil for creatures, a rune circle for
+ * graveyard, grove, arcane spire, wilderness), and a type emblem (a sigil for creatures, a rune circle for
  * spells) sits on top. Every variable choice (angles, counts, offsets)
  * comes from a hash of the card's identifier, so the same card always
  * looks the same and different cards look different.
@@ -254,6 +254,68 @@ function paintGraveMotif(scope) {
   paintSparks(scope, 5, tones.light);
 }
 
+/** Arcane: a spire against a starlit sky, an orb blazing above its tip inside tilted orbit rings. */
+function paintArcaneMotif(scope) {
+  const { context, area, tones, variation } = scope;
+  context.fillStyle = verticalGradient(context, area, [[0, shade(tones.dark, -0.3)], [0.6, tones.dark], [1, shade(tones.base, -0.5)]]);
+  context.fillRect(area.x, area.y, area.width, area.height);
+  paintSparks(scope, 8, tones.light);
+  const spire = { x: area.x + area.width * (0.3 + variation[0] * 0.4), base: area.y + area.height, width: area.width * (0.1 + variation[1] * 0.05), top: area.y + area.height * (0.4 + variation[2] * 0.15) };
+  const orb = { x: spire.x, y: spire.top - area.height * (0.12 + variation[3] * 0.06) };
+  const orbRadius = area.height * 0.07;
+  context.fillStyle = radialGradient(context, orb, orbRadius * 4, [[0, withAlpha(tones.light, 0.7)], [0.3, withAlpha(tones.base, 0.35)], [1, withAlpha(tones.light, 0)]]);
+  context.fillRect(area.x, area.y, area.width, area.height);
+  paintSpire(context, spire, mix(tones.dark, tones.base, 0.35));
+  const rings = 2 + Math.floor(variation[4] * 2);
+  for (let index = 0; index < rings; index += 1) {
+    paintOrbitRing(context, orb, orbRadius * (2 + index * 0.9), { tilt: (variation[5 + index] - 0.5) * Math.PI * 0.8, color: tones.light });
+  }
+  context.beginPath();
+  context.arc(orb.x, orb.y, orbRadius, 0, Math.PI * 2);
+  context.fillStyle = withAlpha(tones.light, 0.95);
+  context.fill();
+}
+
+/**
+ * A tapering tower with a pointed roof and a lit window band.
+ * @param {CanvasRenderingContext2D} context
+ * @param {{ x: number, base: number, width: number, top: number }} spire
+ * @param {string} color
+ */
+function paintSpire(context, { x, base, width, top }, color) {
+  const height = base - top;
+  context.beginPath();
+  context.moveTo(x - width, base);
+  context.lineTo(x - width * 0.6, top + height * 0.2);
+  context.lineTo(x, top);
+  context.lineTo(x + width * 0.6, top + height * 0.2);
+  context.lineTo(x + width, base);
+  context.closePath();
+  context.fillStyle = color;
+  context.fill();
+  context.fillStyle = withAlpha("#ffffff", 0.35);
+  context.fillRect(x - width * 0.25, top + height * 0.45, width * 0.5, Math.max(1, height * 0.04));
+}
+
+/**
+ * A tilted ellipse of light around a point.
+ * @param {CanvasRenderingContext2D} context
+ * @param {{ x: number, y: number }} center
+ * @param {number} radius
+ * @param {{ tilt: number, color: string }} style
+ */
+function paintOrbitRing(context, center, radius, { tilt, color }) {
+  context.save();
+  context.translate(center.x, center.y);
+  context.rotate(tilt);
+  context.beginPath();
+  context.ellipse(0, 0, radius, radius * 0.35, 0, 0, Math.PI * 2);
+  context.lineWidth = Math.max(1, radius * 0.08);
+  context.strokeStyle = withAlpha(color, 0.6);
+  context.stroke();
+  context.restore();
+}
+
 /**
  * @param {CanvasRenderingContext2D} context
  * @param {{ x: number, y: number }} center
@@ -381,5 +443,6 @@ const MOTIF_PAINTERS = Object.freeze({
   iron: paintSteelMotif,
   shadow: paintGraveMotif,
   verdant: paintGroveMotif,
+  arcane: paintArcaneMotif,
   neutral: paintWildernessMotif,
 });

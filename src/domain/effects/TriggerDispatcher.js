@@ -1,7 +1,8 @@
 /**
  * Collects the abilities that fire for a trigger and enqueues them as
  * pending effects. Player-chosen targets come from the command (on_play,
- * on_cast); other triggers resolve their targets automatically.
+ * on_cast); other triggers (on_death, on_turn_start) resolve their targets
+ * automatically.
  */
 import { GameEventType } from "../game/GameEventType.js";
 import { createPendingEffect } from "./PendingEffect.js";
@@ -44,8 +45,31 @@ export function enqueuePlayTriggers(card, chosenTargets, state, context) {
  * @param {import("../commands/CommandHandler.contract.js").ExecutionContext} context
  */
 export function enqueueDeathTriggers(died, state, context) {
-  for (const card of died) {
-    for (const ability of card.definition.abilitiesFor(TriggerType.ON_DEATH)) {
+  enqueueAutomaticTriggers(died, TriggerType.ON_DEATH, state, context);
+}
+
+/**
+ * Enqueues the on_turn_start abilities of every creature the active player
+ * controls, in battlefield order. Called by the TurnManager once the
+ * start-of-turn draw is done.
+ * @param {import("../game/GameState.js").GameState} state
+ * @param {import("../commands/CommandHandler.contract.js").ExecutionContext} context
+ */
+export function enqueueTurnStartTriggers(state, context) {
+  enqueueAutomaticTriggers(state.activePlayer.creatures, TriggerType.ON_TURN_START, state, context);
+}
+
+/**
+ * Triggers that fire outside a player's own command: their targets are
+ * resolved automatically (validated as such at content load).
+ * @param {readonly import("../cards/CardInstance.js").CardInstance[]} sources
+ * @param {string} trigger
+ * @param {import("../game/GameState.js").GameState} state
+ * @param {import("../commands/CommandHandler.contract.js").ExecutionContext} context
+ */
+function enqueueAutomaticTriggers(sources, trigger, state, context) {
+  for (const card of sources) {
+    for (const ability of card.definition.abilitiesFor(trigger)) {
       const targetIds = ability.target === null ? [] : resolveAutomaticTargets(state, ability.target, { controllerId: card.controllerId });
       enqueue(ability, card, targetIds, context);
     }

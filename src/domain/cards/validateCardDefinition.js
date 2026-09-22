@@ -40,6 +40,7 @@ const TRIGGER_CARD_TYPE = Object.freeze({
   [TriggerType.ON_PLAY]: CardType.CREATURE,
   [TriggerType.ON_CAST]: CardType.SPELL,
   [TriggerType.ON_DEATH]: CardType.CREATURE,
+  [TriggerType.ON_TURN_START]: CardType.CREATURE,
 });
 
 /**

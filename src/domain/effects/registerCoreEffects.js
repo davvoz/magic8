@@ -5,11 +5,14 @@
  */
 import { EffectRegistry } from "./EffectRegistry.js";
 import { dealDamageEffect } from "./handlers/DealDamageEffect.js";
+import { destroyEffect } from "./handlers/DestroyEffect.js";
 import { discardEffect } from "./handlers/DiscardEffect.js";
 import { drainEffect } from "./handlers/DrainEffect.js";
 import { drawCardEffect } from "./handlers/DrawCardEffect.js";
 import { healEffect } from "./handlers/HealEffect.js";
+import { millEffect } from "./handlers/MillEffect.js";
 import { modifyStatsEffect } from "./handlers/ModifyStatsEffect.js";
+import { returnToHandEffect } from "./handlers/ReturnToHandEffect.js";
 import { sacrificeEffect } from "./handlers/SacrificeEffect.js";
 
 /** @returns {EffectRegistry} */
@@ -21,5 +24,8 @@ export function createCoreEffectRegistry() {
     .register(modifyStatsEffect)
     .register(drainEffect)
     .register(discardEffect)
-    .register(sacrificeEffect);
+    .register(sacrificeEffect)
+    .register(returnToHandEffect)
+    .register(millEffect)
+    .register(destroyEffect);
 }

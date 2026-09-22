@@ -52,6 +52,8 @@ const MANIFEST = Object.freeze({
     "/data/decks/precon_verdant.deck.json",
     "/data/decks/precon_harvest.deck.json",
     "/data/decks/precon_wildhunt.deck.json",
+    "/data/decks/precon_arcane.deck.json",
+    "/data/decks/precon_bastion.deck.json",
   ]),
   [ContentResource.GAME_RULES]: "/data/rules/game-rules.json",
   [ContentResource.DECK_RULES]: "/data/rules/deck-rules.json",

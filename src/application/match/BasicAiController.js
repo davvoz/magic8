@@ -7,6 +7,8 @@
  * Heuristics (deliberately simple; a search-based AI would replace this
  * class without touching the session):
  * - Main phases: play the most expensive playable card, then move on.
+ *   Damage goes where it kills, removal (destroy, bounce) on the strongest
+ *   enemy creature, buffs on the strongest ally.
  * - Attack with creatures that cannot be blocked and killed for free; attack
  *   with everything when unblocked damage would be lethal.
  * - Block to kill an attacker and survive, to trade evenly, or to chump when
@@ -23,6 +25,8 @@ const DRAIN = "drain";
 const HEAL = "heal";
 const SACRIFICE = "sacrifice";
 const MODIFY_STATS = "modify_stats";
+/** Removal aimed at enemy creatures regardless of their health. */
+const REMOVAL = Object.freeze(["destroy", "return_to_hand"]);
 
 export class BasicAiController {
   kind = ControllerKind.AI;
@@ -114,15 +118,22 @@ function chooseTargets(card, abilityIndex, options, board) {
  * @returns {string | undefined}
  */
 function choosePreferredTarget(effect, params, { creatures, players, board }) {
-  const amount = Number(params?.amount ?? 0);
-  const modifier = { attack: Number(params?.attack ?? 0), health: Number(params?.health ?? 0) };
+  const enemies = creatures.filter((creature) => creature.controllerId === board.enemy.id);
   if (effect === DAMAGE || effect === DRAIN) {
-    return chooseDamageTarget(amount, { creatures, players, board });
+    return chooseDamageTarget(Number(params?.amount ?? 0), { creatures, players, board });
   }
-  if (effect === MODIFY_STATS && (modifier.attack < 0 || modifier.health < 0)) {
-    return chooseWeakenTarget(modifier.health, creatures.filter((creature) => creature.controllerId === board.enemy.id));
+  if (REMOVAL.includes(effect)) {
+    return strongest(enemies)?.instanceId;
+  }
+  if (effect === MODIFY_STATS && isDebuff(params)) {
+    return chooseWeakenTarget(Number(params?.health ?? 0), enemies);
   }
   return chooseAllyTarget(effect, { creatures, players, board });
+}
+
+/** @param {Readonly<Record<string, number | string>> | undefined} params */
+function isDebuff(params) {
+  return Number(params?.attack ?? 0) < 0 || Number(params?.health ?? 0) < 0;
 }
 
 /**

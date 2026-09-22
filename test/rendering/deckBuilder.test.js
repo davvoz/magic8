@@ -67,7 +67,7 @@ describe("DeckBuilderScene — library", () => {
       assert.ok(byId(scene, `library.new.${faction}`), `New ${faction} deck`);
     }
     assert.equal(byId(scene, "library.new.neutral"), null, "the shared pool is not a theme to start a deck from");
-    assert.ok(rendered(scene).some((text) => text.includes("Start from a faction (ember, iron, shadow or verdant); any card may be added.")));
+    assert.ok(rendered(scene).some((text) => text.includes("Start from a faction (ember, iron, shadow, verdant or arcane); any card may be added.")));
     for (const deck of content.preconDecks) {
       assert.equal(byId(scene, `library.edit.${deck.id}`).text, "Copy");
       assert.equal(byId(scene, `library.delete.${deck.id}`), null, "bundled decks cannot be deleted");
