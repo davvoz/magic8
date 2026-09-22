@@ -4,12 +4,18 @@
  * board fall back to their id.
  */
 import { GameEventType } from "../../domain/game/GameEventType.js";
+import { ZoneType } from "../../domain/game/ZoneType.js";
 
 /** @typedef {ReturnType<import("../../application/match/MatchSession.js").MatchSession["snapshotFor"]>} Snapshot */
 
 /** @type {Readonly<Record<string, (event: Readonly<Record<string, unknown>>, names: (id: unknown) => string) => string>>} */
 const DESCRIBERS = Object.freeze({
-  [GameEventType.CARD_PLAYED]: (event, names) => `${names(event.playerId)} played ${names(event.instanceId)}`,
+  [GameEventType.CARD_PLAYED]: (event, names) => {
+    const targets = /** @type {readonly string[]} */ (event.targetIds ?? []);
+    const verb = event.zone === ZoneType.BATTLEFIELD ? "played" : "cast";
+    const on = targets.length === 0 ? "" : ` on ${targets.map(names).join(", ")}`;
+    return `${names(event.playerId)} ${verb} ${names(event.instanceId)}${on}`;
+  },
   [GameEventType.ATTACKERS_DECLARED]: (event, names) => {
     const attackers = /** @type {readonly string[]} */ (event.attackerIds ?? []);
     return attackers.length === 0 ? `${names(event.playerId)} skipped combat` : `${names(event.playerId)} attacks with ${attackers.map(names).join(", ")}`;

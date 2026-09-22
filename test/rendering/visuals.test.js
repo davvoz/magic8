@@ -9,6 +9,8 @@ import { describe, it } from "node:test";
 
 import { hashString, unitSequence } from "../../src/shared/hash.js";
 import { CardNode } from "../../src/rendering/board/CardNode.js";
+import { CastReveal } from "../../src/rendering/board/CastReveal.js";
+import { EffectsNode } from "../../src/rendering/board/EffectsNode.js";
 import { PlayerNode } from "../../src/rendering/board/PlayerNode.js";
 import { CardVisual } from "../../src/rendering/cards/CardVisual.js";
 import { artSeedOf, paintCardArt } from "../../src/rendering/cards/CardArt.js";
@@ -26,6 +28,22 @@ import { FakeContext2D, loadTheme } from "./fakes.js";
 
 const theme = loadTheme();
 const content = await loadBundledContent();
+
+/** A presenter with nothing on the board but one cast playing out. */
+function fakePresenter(reveal) {
+  return { leavingVisuals: [], floats: [], cardFor: () => null, get reveal() { return reveal.isDone ? null : reveal; } };
+}
+
+/** No NaN or negative extent may reach the canvas: the flip passes through zero width. */
+function assertFinite(context) {
+  for (const call of context.calls) {
+    for (const argument of call.args) {
+      assert.ok(typeof argument !== "number" || Number.isFinite(argument), `${call.method} got ${argument}`);
+    }
+  }
+  const radii = context.calls.filter((call) => call.method === "arc").map((call) => call.args[2]);
+  assert.ok(radii.every((radius) => radius >= 0), "no negative radius");
+}
 
 /** Every save() must be matched by a restore(), or state leaks into the next widget. */
 function assertBalanced(context) {
@@ -215,6 +233,47 @@ describe("decorative nodes", () => {
     assert.ok(hud.texts.includes("3") && hud.texts.includes("20") && hud.texts.includes("1"), "hand, deck and graveyard counts");
     assert.equal(hud.calls.filter((call) => call.method === "arc").length >= 5 * 2, true, "one orb (plus highlight) per resource point");
     assertBalanced(hud);
+  });
+});
+
+describe("cast reveal", () => {
+  /** The opponent's cast drawn all the way through, including the instant the card is edge-on. */
+  it("turns the card over and marks its target without leaking context state or drawing degenerate geometry", () => {
+    const spell = content.catalog.all().find((definition) => definition.isSpell);
+    const card = { ...spell, instanceId: "c9", damage: 0, summoningSick: false, exhausted: false };
+    const reveal = new CastReveal({
+      card,
+      caption: "Bob casts",
+      targets: [{ x: 320, y: 640, name: "Cinder Hound" }],
+      from: { x: 700, y: 20, width: 48, height: 68 },
+      at: { x: 695, y: 300, width: 210, height: 294 },
+      to: { x: 16, y: 16, width: 200, height: 184 },
+      animation: theme.animation,
+      holdMs: theme.animation.longMs,
+    });
+    const layout = { width: 1600, height: 900, cards: {} };
+    const node = new EffectsNode({ presenter: fakePresenter(reveal), layout, blocks: [] });
+    const step = theme.animation.mediumMs / 2;
+    const seen = { backs: 0, faces: 0, marks: 0 };
+    for (let frames = 0; frames < 200 && !reveal.isDone; frames += 1) {
+      const context = new FakeContext2D();
+      node.draw(context, theme);
+      assertBalanced(context);
+      assertFinite(context);
+      seen.backs += reveal.frame.turn < 0.5 ? 1 : 0;
+      seen.faces += reveal.frame.turn >= 0.5 ? 1 : 0;
+      seen.marks += context.texts.includes("Cinder Hound") ? 1 : 0;
+      reveal.update(step);
+    }
+    assert.ok(seen.backs > 0, "drawn face-down on the way up");
+    assert.ok(seen.faces > 0, "and face-up once it has turned");
+    assert.ok(seen.marks > 0, "the target is named once the beam reaches it");
+    assert.equal(reveal.isDone, true, "the cast finishes");
+    const after = new FakeContext2D();
+    node.draw(after, theme);
+    const idle = new FakeContext2D();
+    new EffectsNode({ presenter: { leavingVisuals: [], floats: [], cardFor: () => null, reveal: null }, layout, blocks: [] }).draw(idle, theme);
+    assert.equal(after.calls.length, idle.calls.length, "and leaves nothing behind: the overlay draws what an empty one draws");
   });
 });
 

@@ -56,6 +56,6 @@ Dependency direction is `rendering → input → application → domain → shar
 
 ## Quality gates
 
-- `npm test`: 418 headless tests including engine fuzzing, determinism, architecture rules, scene flows against a real match session and the procedural visuals (layout, colour, art determinism, context state hygiene).
+- `npm test`: 423 headless tests including engine fuzzing, determinism, architecture rules, scene flows against a real match session and the procedural visuals (layout, colour, art determinism, context state hygiene).
 - `npm run lint`: ESLint rules mirroring the SonarQube checks in `docs/ARCHITECTURE.md` §1.7 (complexity ≤ 12, ≤ 4 params, no nested ternaries, no `eval`/`new Function`, …).
 - `sonar-project.properties` is ready for a SonarQube/SonarCloud scan (`sonar.javascript.lcov.reportPaths=coverage/lcov.info`); no scan has been run in this repository yet.

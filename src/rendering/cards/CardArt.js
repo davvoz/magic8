@@ -404,12 +404,15 @@ function paintEmblem(scope, type) {
 }
 
 /**
+ * The spell sigil: two concentric circles, rays between them and a four-point
+ * star at the centre. Exported because a cast spreads the same rune across
+ * the table (EffectsNode), which is what ties the two together.
  * @param {CanvasRenderingContext2D} context
  * @param {{ x: number, y: number }} center
  * @param {number} radius
  * @param {{ rays: number, color: string }} style
  */
-function paintRuneCircle(context, center, radius, { rays, color }) {
+export function paintRuneCircle(context, center, radius, { rays, color }) {
   context.lineWidth = Math.max(1, radius * 0.07);
   context.strokeStyle = withAlpha(color, 0.9);
   context.beginPath();

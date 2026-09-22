@@ -84,6 +84,17 @@ const rendered = (scene) => {
   return context.texts;
 };
 const key = (name) => ({ type: "keydown", key: name, repeat: false });
+const centreOf = (area) => ({ x: area.x + area.width / 2, y: area.y + area.height / 2 });
+/** Steps the scene in small frames until `reached`, and reports how long that took. */
+const advancer = (scene, step = 40, limitMs = 8000) => (reached, label) => {
+  for (let elapsed = 0; elapsed <= limitMs; elapsed += step) {
+    if (reached()) {
+      return elapsed;
+    }
+    scene.update(step);
+  }
+  return assert.fail(`never reached: ${label}`);
+};
 
 describe("Tween", () => {
   it("interpolates numeric fields with easing and clamps at the end", () => {
@@ -359,6 +370,46 @@ describe("MatchScene on the board", () => {
     assert.equal(snapshot.players[1].life, 14);
     assert.ok(rendered(scene).some((text) => text.includes("deals 6")), "log line (ellipsized to the sidebar width)");
     assert.ok(scene.presenter.floats.some((float) => float.spec.text === "-6"));
+  });
+
+  it("plays out the AI's cast: out of their hand, face up over the table, a beam to its target, then into their graveyard", async () => {
+    const { scene, session } = await sceneFor({ p1: { battlefield: ["cinder_hound"] }, p2: { hand: ["ember_bolt"], resources: 2 } });
+    assert.equal(scene.presenter.reveal, null, "nothing to reveal yet");
+    scene.onKey(key("e"));
+    await session.whenIdle();
+    const reveal = scene.presenter.reveal;
+    assert.ok(reveal, "the AI's spell is played out");
+    assert.equal(reveal.card.name, "Ember Bolt");
+    assert.equal(reveal.caption, "Bob casts");
+    assert.deepEqual(reveal.targets.map((target) => target.name), ["Cinder Hound"], "aimed at the creature it kills");
+
+    const layout = computeBoardLayout(session.snapshotFor(P1), P1, SIZE);
+    assert.equal(reveal.frame.turn, 0, "face down to begin with");
+    assert.equal(reveal.frame.width, CARD_SIZE.back.width, "at the size of a card in their hand");
+    assert.ok(Math.abs(centreOf(reveal.frame).x - centreOf(layout.opponent.hand).x) < 1, "and where their hand is");
+    const advanceTo = advancer(scene);
+
+    advanceTo(() => centreOf(reveal.frame).y === centreOf(layout.banner).y, "risen to the middle of the table");
+    assert.ok(reveal.frame.width > CARD_SIZE.back.width * 3, "grown from hand size on the way up");
+    assert.equal(reveal.frame.turn, 0, "and still face down");
+
+    advanceTo(() => reveal.frame.turn === 1, "turned face up");
+    const texts = rendered(scene);
+    assert.ok(texts.includes("Ember Bolt"), "the face is drawn");
+    assert.ok(texts.includes("Bob casts"), "so is the caption");
+    assert.ok(texts.some((text) => text.includes("Bob cast Ember Bolt on")), "log names the spell and its target");
+
+    advanceTo(() => reveal.frame.strike === 1, "struck its target");
+    assert.equal(reveal.frame.ring, 1, "the rune has spread by then");
+    assert.ok(rendered(scene).includes("Cinder Hound"), "and the target is named where the beam lands");
+
+    const parked = centreOf(reveal.frame);
+    assert.deepEqual(parked, centreOf(layout.banner), "held in the middle of the table");
+    scene.update(400);
+    assert.deepEqual(centreOf(reveal.frame), parked, "and still there a moment later: it does not drift while it is read");
+    const held = 400 + advanceTo(() => reveal.frame.glow < 1, "began to sink");
+    assert.ok(held > 1000, `held still for ${held}ms once struck, long enough to read`);
+    advanceTo(() => scene.presenter.reveal === null, "gone");
   });
 
   it("lets the human block by tapping the blocker then the attacker", async () => {

@@ -2,7 +2,8 @@
  * Turns snapshots and engine events into presentation state: one
  * CardVisual per card on the board (tweening toward its layout slot,
  * entering from the owner's hand or library, leaving toward the owner's
- * graveyard) and short-lived floating texts for damage and healing.
+ * graveyard), short-lived floating texts for damage and healing, and the
+ * reveal of a spell the opponent cast (which never reaches the board).
  *
  * It never inspects state deltas to guess what happened: events say what
  * happened, the layout says where things belong.
@@ -10,15 +11,32 @@
 import { GameEventType } from "../../domain/game/GameEventType.js";
 import { ZoneType } from "../../domain/game/ZoneType.js";
 import { CardVisual } from "../cards/CardVisual.js";
+import { CARD_SIZE } from "./BoardLayout.js";
+import { CastReveal } from "./CastReveal.js";
 
 const MAX_FLOATS = 32;
 const FLOAT_RISE = 40;
+/**
+ * How many casts may be shown at once: the one playing out plus one waiting.
+ * The AI can empty its hand in a turn, and a queue of full-length reveals
+ * would run long after the board had moved on; the rest stay in the log.
+ */
+const MAX_REVEALS = 2;
+/** How long a cast is held still to be read, as a multiple of the long duration; shorter when it is queued behind another. */
+const HOLD = Object.freeze({ alone: 3, queued: 1.2 });
+/** Size a revealed card is held at: the board card's proportions, 1.6 times over. */
+const REVEAL_SIZE = Object.freeze({ width: 210, height: 294 });
+/** How far down a card an anchor sits: floating numbers hang near the top, a target is marked through the middle. */
+const FLOAT_DEPTH = 1 / 3;
+const CENTRE = 1 / 2;
 
 /**
  * @typedef {Readonly<{ text: string, colorKey: string, x: number, y: number }>} FloatSpec
  * @typedef {{ spec: FloatSpec, ageMs: number, durationMs: number }} Float
+ * @typedef {import("../../shared/geometry.js").Rect} Rect
  * @typedef {import("./BoardLayout.js").BoardLayout} BoardLayout
  * @typedef {import("../../domain/game/GameSnapshot.js").CardView} CardView
+ * @typedef {ReturnType<import("../../application/match/MatchSession.js").MatchSession["snapshotFor"]>} Snapshot
  */
 
 export class MatchPresenter {
@@ -28,6 +46,8 @@ export class MatchPresenter {
   #cards = new Map();
   /** @type {Float[]} */
   #floats = [];
+  /** Opponent casts waiting to be shown, oldest first; only the first one runs. @type {CastReveal[]} */
+  #reveals = [];
   #animation;
 
   /** @param {Readonly<Record<string, number>>} animation theme durations (shortMs, mediumMs, longMs) */
@@ -45,6 +65,11 @@ export class MatchPresenter {
     return this.#floats.map((float) => ({ spec: float.spec, progress: float.ageMs / float.durationMs }));
   }
 
+  /** @returns {CastReveal | null} the opponent's cast being played out right now, if any */
+  get reveal() {
+    return this.#reveals[0] ?? null;
+  }
+
   /** @param {string} instanceId */
   visualFor(instanceId) {
     return this.#visuals.get(instanceId) ?? null;
@@ -57,7 +82,7 @@ export class MatchPresenter {
 
   /**
    * Reconciles visuals with a new snapshot and its events.
-   * @param {ReturnType<import("../../application/match/MatchSession.js").MatchSession["snapshotFor"]>} snapshot
+   * @param {Snapshot} snapshot
    * @param {readonly Readonly<Record<string, unknown>>[]} events already redacted for this perspective
    * @param {BoardLayout} layout
    * @param {boolean} animate false on first display: everything snaps into place
@@ -79,6 +104,7 @@ export class MatchPresenter {
     if (animate) {
       this.#enqueueFloats(events, layout);
       this.#enqueueNudges(events, layout);
+      this.#enqueueReveals(events, snapshot, layout);
     }
   }
 
@@ -103,11 +129,28 @@ export class MatchPresenter {
       this.#floats = this.#floats.filter((float) => float.ageMs < float.durationMs);
       changed = true;
     }
-    return changed;
+    return this.#advanceReveal(dtMs) || changed;
   }
 
   get isAnimating() {
-    return this.#floats.length > 0 || [...this.#visuals.values()].some((visual) => visual.isAnimating);
+    return this.#floats.length > 0 || this.#reveals.length > 0 || [...this.#visuals.values()].some((visual) => visual.isAnimating);
+  }
+
+  /**
+   * Runs the reveal at the head of the queue and drops it once it has played out.
+   * @param {number} dtMs
+   * @returns {boolean} whether a render is needed
+   */
+  #advanceReveal(dtMs) {
+    const current = this.#reveals[0];
+    if (current === undefined) {
+      return false;
+    }
+    const changed = current.update(dtMs);
+    if (current.isDone) {
+      this.#reveals.shift();
+    }
+    return changed;
   }
 
   /**
@@ -152,6 +195,53 @@ export class MatchPresenter {
   }
 
   /**
+   * A spell the opponent casts is played from a hidden hand straight to the
+   * graveyard: nothing of it ever appears on the table, so without this the
+   * only trace is a log line. The card is held up, large, over the middle of
+   * the board. Our own casts need no reveal: we chose them.
+   * @param {readonly Readonly<Record<string, unknown>>[]} events
+   * @param {Snapshot} snapshot
+   * @param {BoardLayout} layout
+   */
+  #enqueueReveals(events, snapshot, layout) {
+    const opponent = snapshot.players.find((player) => player.id === layout.opponent.id);
+    if (opponent === undefined) {
+      return;
+    }
+    for (const event of events) {
+      if (!isOpponentCast(event, opponent.id) || this.#reveals.length >= MAX_REVEALS) {
+        continue;
+      }
+      const card = findCard(snapshot, event.instanceId);
+      if (card !== null) {
+        const holdMs = this.#animation.longMs * (this.#reveals.length === 0 ? HOLD.alone : HOLD.queued);
+        const targets = this.#targetsOf(event, snapshot, layout);
+        this.#reveals.push(new CastReveal({ card, caption: `${opponent.name} casts`, targets, ...revealPathFor(layout), animation: this.#animation, holdMs }));
+      }
+    }
+  }
+
+  /**
+   * Where the spell's targets stand and what they are called, fixed now
+   * rather than read later: a creature it kills is already on its way off
+   * the board, and gone from the layout within the second.
+   * @param {Readonly<Record<string, unknown>>} event
+   * @param {Snapshot} snapshot
+   * @param {BoardLayout} layout
+   * @returns {readonly import("./CastReveal.js").CastTarget[]}
+   */
+  #targetsOf(event, snapshot, layout) {
+    const ids = /** @type {readonly string[]} */ (event.targetIds ?? []);
+    return Object.freeze(
+      ids.flatMap((id) => {
+        const anchor = this.#anchorFor(id, layout, CENTRE);
+        const name = nameOf(id, snapshot);
+        return anchor === null || name === null ? [] : [Object.freeze({ ...anchor, name })];
+      }),
+    );
+  }
+
+  /**
    * @param {readonly Readonly<Record<string, unknown>>[]} events
    * @param {BoardLayout} layout
    */
@@ -188,15 +278,18 @@ export class MatchPresenter {
   }
 
   /**
-   * Where a floating number for `id` appears: the card's slot, else the
-   * card's last drawn position (it may have just died), else the player's HUD.
+   * Where something that happened to `id` is marked: the card's slot, else
+   * the card's last drawn position (it may have just died), else the
+   * player's HUD. `depth` is how far down the card the point sits — floats
+   * hang near the top, a target is marked through the middle.
    * @param {string} id
    * @param {BoardLayout} layout
+   * @param {number} [depth]
    */
-  #anchorFor(id, layout) {
+  #anchorFor(id, layout, depth = FLOAT_DEPTH) {
     const slot = layout.cards[id] ?? this.#visuals.get(id)?.state;
     if (slot !== undefined) {
-      return { x: slot.x + slot.width / 2, y: slot.y + slot.height / 3 };
+      return { x: slot.x + slot.width / 2, y: slot.y + slot.height * depth };
     }
     const seat = [layout.me, layout.opponent].find((candidate) => candidate.id === id);
     return seat === undefined ? null : { x: seat.hud.x + seat.hud.width / 2, y: seat.hud.y + seat.hud.height / 2 };
@@ -210,7 +303,68 @@ const FLOAT_BUILDERS = Object.freeze({
   [GameEventType.FATIGUE_DAMAGE]: (event) => ({ id: event.playerId, text: `-${event.amount} fatigue`, colorKey: "danger" }),
 });
 
+/**
+ * A card played by `opponentId` that did not land on the battlefield: a spell.
+ * @param {Readonly<Record<string, unknown>>} event
+ * @param {string} opponentId
+ */
+function isOpponentCast(event, opponentId) {
+  return event.type === GameEventType.CARD_PLAYED && event.playerId === opponentId && event.zone !== ZoneType.BATTLEFIELD;
+}
+
+/**
+ * What to call a target: a player by name, a card by its printed name.
+ * @param {string} id
+ * @param {Snapshot} snapshot
+ * @returns {string | null}
+ */
+function nameOf(id, snapshot) {
+  const player = snapshot.players.find((candidate) => candidate.id === id);
+  return player?.name ?? findCard(snapshot, id)?.name ?? null;
+}
+
+/**
+ * Looks a card up wherever it now sits; a spell has already reached the graveyard.
+ * @param {Snapshot} snapshot
+ * @param {unknown} instanceId
+ * @returns {CardView | null}
+ */
+function findCard(snapshot, instanceId) {
+  for (const player of snapshot.players) {
+    const card = [...player.battlefield, ...player.graveyard, ...(player.hand ?? [])].find((candidate) => candidate.instanceId === instanceId);
+    if (card !== undefined) {
+      return card;
+    }
+  }
+  return null;
+}
+
+/**
+ * The path a cast travels: out of the opponent's hand, up to the banner
+ * strip — the free band between the two battlefields — and down into their
+ * graveyard, which the HUD stands for, as it does for every card that leaves.
+ * @param {BoardLayout} layout
+ * @returns {{ from: Rect, at: Rect, to: Rect }}
+ */
+function revealPathFor(layout) {
+  return {
+    from: centredOn(layout.opponent.hand, CARD_SIZE.back),
+    at: centredOn(layout.banner, REVEAL_SIZE),
+    to: layout.opponent.hud,
+  };
+}
+
+/**
+ * @param {Rect} area
+ * @param {{ width: number, height: number }} size
+ * @returns {Rect}
+ */
+function centredOn(area, size) {
+  return { x: area.x + (area.width - size.width) / 2, y: area.y + (area.height - size.height) / 2, width: size.width, height: size.height };
+}
+
 /** Vertical offset of a float at `progress` in [0, 1]. */
 export function floatOffset(progress) {
   return -FLOAT_RISE * progress;
 }
+
