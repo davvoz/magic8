@@ -36,6 +36,22 @@ describe("BasicAiController — main phase", () => {
     assert.deepEqual(ai.decide(face.engine.getSnapshot(P1)).targets, [P2], "colossus survives; go face");
   });
 
+  it("goes for the kill when the damage is lethal, even with a creature to shoot", () => {
+    const { engine, id } = createScenario({ p1: { hand: ["ember_bolt"], resources: 2 }, p2: { life: 1, battlefield: ["lava_brute"] } });
+    const decision = ai.decide(engine.getSnapshot(P1));
+    assert.deepEqual(decision.targets, [P2], "winning now beats killing the 4/3 brute");
+    assert.notDeepEqual(decision.targets, [id(P2, BF)]);
+    assert.equal(engine.execute(decision).ok, true);
+    assert.equal(engine.getSnapshot(P1).isOver, true);
+  });
+
+  it("plays the cheap lethal burn ahead of the bigger card in hand", () => {
+    const { engine, id } = createScenario({ p1: { hand: ["lava_brute", "ember_bolt"], resources: 5 }, p2: { life: 3 } });
+    const decision = ai.decide(engine.getSnapshot(P1));
+    assert.equal(decision.cardId, id(P1, HAND, 1), "Ember Bolt (2) over Lava Brute (4): it wins on the spot");
+    assert.deepEqual(decision.targets, [P2]);
+  });
+
   it("aims destroy and bounce at the strongest enemy creature", () => {
     const destroy = createScenario({ p1: { hand: ["disintegrate"], battlefield: ["iron_colossus"], resources: 5 }, p2: { battlefield: ["ember_imp", "blazing_titan", "steel_sentinel"] } });
     assert.deepEqual(ai.decide(destroy.engine.getSnapshot(P1)).targets, [destroy.id(P2, BF, 1)], "the titan, not its own colossus");

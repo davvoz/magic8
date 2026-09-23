@@ -189,6 +189,19 @@ describe("MatchInteraction", () => {
     assert.equal(interaction.mode, InteractionMode.IDLE, "tapping it must not strand the player in targeting");
   });
 
+  it("plays a creature whose on_play has nothing to target on the first tap", () => {
+    const { session, id } = sessionFromScenario({ p1: { hand: ["spellbinder"], resources: 3 }, p2: {} });
+    session.start();
+    const interaction = new MatchInteraction(P1);
+    interaction.sync(session.snapshotFor(P1));
+    const spellbinder = id(P1, ZoneType.HAND);
+    assert.equal(interaction.highlightFor(spellbinder), Highlight.PLAYABLE);
+    const command = interaction.tap(spellbinder);
+    assert.equal(command.type, CommandType.PLAY_CARD);
+    assert.deepEqual(command.targets, [], "no enemy creature to bounce, so no target to ask for");
+    assert.equal(interaction.mode, InteractionMode.IDLE, "nothing to target, nothing to ask");
+  });
+
   it("toggles attackers and assigns blockers in two taps", async () => {
     const { session, id } = sessionFromScenario({ p1: { battlefield: ["lava_brute", "steel_sentinel"] }, p2: { battlefield: ["cinder_hound"] } });
     session.start();

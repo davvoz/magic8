@@ -9,6 +9,7 @@ import { LIMITS, stripControlCharacters } from "../../shared/limits.js";
 import {
   Issues,
   checkArrayOf,
+  checkBoolean,
   checkEnum,
   checkInteger,
   checkObject,
@@ -32,7 +33,7 @@ import { CARD_TYPES, CardType } from "./CardType.js";
 export const CARD_SET_SCHEMA_VERSION = 1;
 
 const CARD_KEYS = Object.freeze(["id", "name", "type", "faction", "cost", "attack", "health", "keywords", "abilities", "text"]);
-const ABILITY_KEYS = Object.freeze(["trigger", "effect", "params", "target"]);
+const ABILITY_KEYS = Object.freeze(["trigger", "effect", "params", "target", "mandatory"]);
 const CARD_SET_KEYS = Object.freeze(["schemaVersion", "cards"]);
 
 /** Which card type each trigger belongs to. */
@@ -201,10 +202,31 @@ function checkAbility(issues, raw, path, scope) {
   }
   const params = scope.context.effects.validateParams(issues, effect, object.params, `${path}.params`);
   const target = checkAbilityTarget(issues, object.target, `${path}.target`, { trigger, descriptor });
-  if (params === undefined || target === undefined) {
+  const mandatory = checkMandatory(issues, object.mandatory, `${path}.mandatory`, { trigger, target });
+  if (params === undefined || target === undefined || mandatory === undefined) {
     return undefined;
   }
-  return new Ability({ trigger, effect, params, target });
+  return new Ability({ trigger, effect, params, target, mandatory });
+}
+
+/**
+ * `mandatory` only means something where a card could otherwise be played
+ * with the ability fizzling: a play trigger whose target the player chooses.
+ * @param {Issues} issues
+ * @param {unknown} raw
+ * @param {string} path
+ * @param {{ trigger: string, target: import("../effects/TargetSpec.js").TargetSpec | null | undefined }} ability
+ * @returns {boolean | undefined}
+ */
+function checkMandatory(issues, raw, path, { trigger, target }) {
+  if (raw === undefined) {
+    return false;
+  }
+  const mandatory = checkBoolean(issues, raw, path);
+  if (mandatory === true && !(PLAYER_TARGETED_TRIGGERS.includes(trigger) && target !== null && target !== undefined && !target.isAutomatic)) {
+    return issues.add(path, "only a play ability whose target the player chooses can be mandatory");
+  }
+  return mandatory;
 }
 
 /**

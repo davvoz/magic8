@@ -795,6 +795,7 @@
         {
           "trigger": "on_play",
           "effect": "sacrifice",
+          "mandatory": true,
           "target": {
             "kind": "creature",
             "owner": "ally",

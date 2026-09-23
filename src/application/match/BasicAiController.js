@@ -6,15 +6,19 @@
  *
  * Heuristics (deliberately simple; a search-based AI would replace this
  * class without touching the session):
- * - Main phases: play the most expensive playable card, then move on.
- *   Damage goes where it kills, removal (destroy, bounce) on the strongest
- *   enemy creature, buffs on the strongest ally.
+ * - Main phases: play a card that wins on the spot if there is one, else the
+ *   most expensive playable card, then move on. Damage goes to the face when
+ *   that is lethal, else where it kills, removal (destroy, bounce) on the
+ *   strongest enemy creature, buffs on the strongest ally.
  * - Attack with creatures that cannot be blocked and killed for free; attack
  *   with everything when unblocked damage would be lethal.
  * - Block to kill an attacker and survive, to trade evenly, or to chump when
  *   the incoming damage would be lethal.
  */
+import { CardType } from "../../domain/cards/CardType.js";
 import { declareAttackers, declareBlockers, endPhase, endTurn, playCard } from "../../domain/commands/commandFactories.js";
+import { TargetKind, TargetOwner } from "../../domain/effects/TargetSpec.js";
+import { TriggerType } from "../../domain/effects/TriggerType.js";
 import { GamePhase } from "../../domain/game/GamePhase.js";
 import { ControllerKind } from "./PlayerController.contract.js";
 
@@ -61,7 +65,7 @@ export class BasicAiController {
   #mainPhase(snapshot, board) {
     const { legalMoves } = snapshot;
     const playable = board.me.hand.filter((card) => legalMoves.playableCardIds.includes(card.instanceId));
-    const card = playable.sort((a, b) => b.cost - a.cost)[0];
+    const card = chooseCard(playable, legalMoves, board);
     if (card !== undefined) {
       const targets = legalMoves.targetOptions[card.instanceId].flatMap((options, index) => chooseTargets(card, index, options, board));
       return playCard(board.me.id, card.instanceId, targets);
@@ -92,6 +96,74 @@ function boardFor(snapshot, me) {
 }
 
 /**
+ * A card that wins on the spot beats every board consideration; otherwise
+ * spend the turn on the most expensive card in hand.
+ * @param {readonly CardView[]} playable
+ * @param {import("../../domain/game/LegalMoves.js").LegalMoves} legalMoves
+ * @param {Board} board
+ * @returns {CardView | undefined}
+ */
+function chooseCard(playable, legalMoves, board) {
+  const byCost = [...playable].sort((a, b) => b.cost - a.cost);
+  return byCost.find((card) => faceDamage(card, legalMoves.targetOptions[card.instanceId], board) >= board.enemy.life) ?? byCost[0];
+}
+
+/**
+ * Damage the card can put on the enemy player's own life total when played
+ * now: its automatic play abilities plus every chosen target the AI is free
+ * to aim at the player.
+ * @param {CardView} card
+ * @param {readonly (readonly string[])[]} targetOptions
+ * @param {Board} board
+ * @returns {number}
+ */
+function faceDamage(card, targetOptions, board) {
+  let total = 0;
+  let chosenIndex = 0;
+  for (const ability of playAbilities(card)) {
+    if (ability.target === null) {
+      continue;
+    }
+    const amount = ability.effect === DAMAGE || ability.effect === DRAIN ? Number(ability.params?.amount ?? 0) : 0;
+    if (isAutomaticTarget(ability.target)) {
+      total += ability.target.owner === TargetOwner.ENEMY ? amount : 0;
+      continue;
+    }
+    total += (targetOptions[chosenIndex] ?? []).includes(board.enemy.id) ? amount : 0;
+    chosenIndex += 1;
+  }
+  return total;
+}
+
+/**
+ * The card's play-trigger abilities, in the order the engine fires them.
+ * @param {CardView} card
+ * @returns {readonly import("../../domain/game/GameSnapshot.js").AbilityView[]}
+ */
+function playAbilities(card) {
+  const trigger = card.type === CardType.CREATURE ? TriggerType.ON_PLAY : TriggerType.ON_CAST;
+  return card.abilities.filter((ability) => ability.trigger === trigger);
+}
+
+/**
+ * The abilities whose targets travel in the PLAY_CARD command, in the order
+ * `legalMoves.targetOptions` lists them (mirrors Playability).
+ * @param {CardView} card
+ * @returns {readonly import("../../domain/game/GameSnapshot.js").AbilityView[]}
+ */
+function playerTargetedAbilities(card) {
+  return playAbilities(card).filter((ability) => ability.target !== null && !isAutomaticTarget(ability.target));
+}
+
+/**
+ * Mirrors TargetSpec.isAutomatic: the engine resolves these itself.
+ * @param {NonNullable<import("../../domain/game/GameSnapshot.js").AbilityView["target"]>} target
+ */
+function isAutomaticTarget(target) {
+  return target.kind === TargetKind.PLAYER && target.owner !== TargetOwner.ANY && target.count === 1;
+}
+
+/**
  * Picks targets for the card's n-th player-targeted play ability.
  * @param {CardView} card
  * @param {number} abilityIndex
@@ -100,7 +172,10 @@ function boardFor(snapshot, me) {
  * @returns {string[]}
  */
 function chooseTargets(card, abilityIndex, options, board) {
-  const ability = card.abilities.filter((candidate) => candidate.target !== null)[abilityIndex];
+  if (options.length === 0) {
+    return [];
+  }
+  const ability = playerTargetedAbilities(card)[abilityIndex];
   const creaturesById = new Map([...board.me.battlefield, ...board.enemy.battlefield].map((creature) => [creature.instanceId, creature]));
   const creatures = options.map((id) => creaturesById.get(id)).filter((creature) => creature !== undefined);
   const players = options.filter((id) => id === board.me.id || id === board.enemy.id);
@@ -163,19 +238,24 @@ function chooseWeakenTarget(health, enemies) {
 }
 
 /**
- * Kill the strongest enemy creature the damage can finish; otherwise hit the
- * enemy player, or the strongest enemy creature when players are not allowed.
+ * Win the game if the damage is lethal; else kill the strongest enemy
+ * creature the damage can finish; otherwise hit the enemy player, or the
+ * strongest enemy creature when players are not allowed.
  * @param {number} amount
  * @param {{ creatures: CardView[], players: string[], board: Board }} context
  * @returns {string | undefined}
  */
 function chooseDamageTarget(amount, { creatures, players, board }) {
+  const canHitFace = players.includes(board.enemy.id);
+  if (canHitFace && amount >= board.enemy.life) {
+    return board.enemy.id;
+  }
   const enemies = creatures.filter((creature) => creature.controllerId === board.enemy.id);
   const kill = strongest(enemies.filter((creature) => creature.health <= amount));
   if (kill !== undefined) {
     return kill.instanceId;
   }
-  return players.includes(board.enemy.id) ? board.enemy.id : strongest(enemies)?.instanceId;
+  return canHitFace ? board.enemy.id : strongest(enemies)?.instanceId;
 }
 
 /**

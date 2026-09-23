@@ -139,10 +139,15 @@ describe("PLAY_CARD — targeting rules", () => {
     assert.equal(engine.execute(playCard(P1, warden, [id(P1, BF)])).ok, true);
   });
 
-  it("a creature with no legal target for its on_play cannot be played, exactly like a spell", () => {
+  it("a creature whose on_play has no legal target enters anyway, the ability fizzling", () => {
     const lone = createScenario({ p1: { hand: ["forge_warden"], resources: 5 } });
-    assert.equal(lone.engine.execute(playCard(P1, lone.id(P1, HAND))).error.code, CommandError.INVALID_TARGET, "no other ally to buff");
-    assert.deepEqual(lone.engine.getLegalMoves(P1).playableCardIds, []);
+    assert.deepEqual(lone.engine.getLegalMoves(P1).playableCardIds, [lone.id(P1, HAND)], "a body with nobody to buff is still a body");
+    const fizzled = lone.engine.execute(playCard(P1, lone.id(P1, HAND)));
+    assert.equal(fizzled.ok, true, JSON.stringify(fizzled));
+    assert.deepEqual(player(lone.engine, P1).battlefield.map((card) => card.definitionId), ["forge_warden"]);
+    assert.equal(eventsOfType(fizzled.value.events, GameEventType.STATS_MODIFIED).length, 0, "nothing to buff");
+    assert.equal(eventsOfType(fizzled.value.events, GameEventType.ABILITY_TRIGGERED).length, 0, "an ability with no target never fires");
+    assert.equal(lone.engine.execute(playCard(P1, lone.id(P1, HAND), [lone.id(P1, HAND)])).ok, false, "and it takes no target ids");
 
     const { engine, id } = createScenario({ p1: { hand: ["forge_warden"], battlefield: ["scrap_golem"], resources: 5 } });
     const result = engine.execute(playCard(P1, id(P1, HAND), [id(P1, BF)]));

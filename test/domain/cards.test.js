@@ -204,6 +204,26 @@ describe("validateCardDefinition — rejected input", () => {
     assert.ok(problemsOf(onSpell).some((p) => p.includes('"on_turn_start" is not valid on spell cards')));
   });
 
+  it("accepts mandatory only on a play ability whose target the player chooses", () => {
+    const raw = creature();
+    raw.abilities = [{ trigger: "on_play", effect: "sacrifice", mandatory: true, target: { kind: "creature", owner: "ally" } }];
+    const tribute = validateCardDefinition(raw, context);
+    assert.equal(tribute.ok, true);
+    assert.equal(tribute.value.abilities[0].mandatory, true);
+    assert.equal(validateCardDefinition(creature(), context).value.abilities[0].mandatory, false, "defaults to false");
+
+    raw.abilities[0].mandatory = "yes";
+    assert.ok(problemsOf(raw).some((p) => p.startsWith("card.abilities[0].mandatory:")));
+
+    const automatic = creature();
+    automatic.abilities = [{ trigger: "on_play", effect: "mill", params: { amount: 1 }, mandatory: true, target: { kind: "player", owner: "enemy" } }];
+    assert.ok(problemsOf(automatic).some((p) => p.includes("only a play ability whose target the player chooses")));
+
+    const onDeath = creature();
+    onDeath.abilities = [{ trigger: "on_death", effect: "mill", params: { amount: 1 }, mandatory: true, target: { kind: "player", owner: "enemy" } }];
+    assert.ok(problemsOf(onDeath).some((p) => p.includes("only a play ability whose target the player chooses")));
+  });
+
   it("caps abilities and keywords and rejects duplicate keywords", () => {
     const many = creature();
     many.abilities = Array.from({ length: 5 }, () => ({ trigger: "on_play", effect: "draw_card", params: { amount: 1 } }));

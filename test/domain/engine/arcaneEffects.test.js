@@ -5,7 +5,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { CommandError } from "../../../src/domain/commands/CommandError.js";
 import { endTurn, playCard } from "../../../src/domain/commands/commandFactories.js";
 import { GameEventType } from "../../../src/domain/game/GameEventType.js";
 import { ZoneType } from "../../../src/domain/game/ZoneType.js";
@@ -38,10 +37,12 @@ describe("return_to_hand", () => {
     assert.equal(replayed.summoningSick, true);
   });
 
-  it("a bounce creature cannot be played while the opponent has no creature (Spellbinder)", () => {
+  it("a bounce creature played against an empty board is just a body (Spellbinder)", () => {
     const { engine, id } = createScenario({ p1: { hand: ["spellbinder"], resources: 3 } });
-    assert.equal(engine.execute(playCard(P1, id(P1, HAND))).error.code, CommandError.INVALID_TARGET);
-    assert.deepEqual(engine.getLegalMoves(P1).playableCardIds, [], "a body with nothing to bounce stays in hand");
+    assert.deepEqual(engine.getLegalMoves(P1).playableCardIds, [id(P1, HAND)], "nothing to bounce is not a reason to stay in hand");
+    const result = engine.execute(playCard(P1, id(P1, HAND)));
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.deepEqual(player(engine, P1).battlefield.map((card) => card.definitionId), ["spellbinder"]);
   });
 });
 

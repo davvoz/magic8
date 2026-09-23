@@ -180,6 +180,9 @@ export class MatchInteraction {
   }
 
   /**
+   * Asks for a target once per play ability that has one to offer. An ability
+   * with no legal target is skipped, so its card is played straight away and
+   * the flat target list stays aligned with `splitChosenTargets`.
    * @param {Snapshot} snapshot
    * @param {string} id
    */
@@ -188,7 +191,7 @@ export class MatchInteraction {
     if (moves === null || !moves.playableCardIds.includes(id)) {
       return null;
     }
-    const groups = moves.targetOptions[id] ?? [];
+    const groups = (moves.targetOptions[id] ?? []).filter((options) => options.length > 0);
     if (groups.length === 0) {
       return playCard(this.#playerId, id);
     }

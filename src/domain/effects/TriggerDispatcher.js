@@ -77,12 +77,18 @@ function enqueueAutomaticTriggers(sources, trigger, state, context) {
 }
 
 /**
+ * An ability that needs a target and found none does not fire at all: it is
+ * neither queued nor announced (Playability holds back the cards for which
+ * that would be a free ride).
  * @param {import("../cards/Ability.js").Ability} ability
  * @param {import("../cards/CardInstance.js").CardInstance} source
  * @param {readonly string[]} targetIds
  * @param {import("../commands/CommandHandler.contract.js").ExecutionContext} context
  */
 function enqueue(ability, source, targetIds, context) {
+  if (ability.requiresTarget && targetIds.length === 0) {
+    return;
+  }
   context.queue.enqueue(createPendingEffect({ ability, source, targetIds }));
   context.events.emit(GameEventType.ABILITY_TRIGGERED, {
     sourceId: source.instanceId,
