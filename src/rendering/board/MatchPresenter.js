@@ -4,6 +4,9 @@
  * entering from the owner's hand or library, leaving toward the owner's
  * graveyard), short-lived floating texts for damage and healing, and the
  * reveal of a spell the opponent cast (which never reaches the board).
+ * What such a spell does — its floating numbers and the life it moves — is
+ * held back until the reveal strikes its targets, so the numbers change
+ * when the card is seen to hit, not while it is still face-down in a hand.
  *
  * It never inspects state deltas to guess what happened: events say what
  * happened, the layout says where things belong.
@@ -33,6 +36,8 @@ const CENTRE = 1 / 2;
 /**
  * @typedef {Readonly<{ text: string, colorKey: string, x: number, y: number }>} FloatSpec
  * @typedef {{ spec: FloatSpec, ageMs: number, durationMs: number }} Float
+ * @typedef {{ cast: CastReveal, floats: FloatSpec[], lives: Map<string, number>, struck: boolean }} PendingReveal
+ *   what the cast did — its floats, and each player's life as it stood before — held until `struck`
  * @typedef {import("../../shared/geometry.js").Rect} Rect
  * @typedef {import("./BoardLayout.js").BoardLayout} BoardLayout
  * @typedef {import("../../domain/game/GameSnapshot.js").CardView} CardView
@@ -46,7 +51,7 @@ export class MatchPresenter {
   #cards = new Map();
   /** @type {Float[]} */
   #floats = [];
-  /** Opponent casts waiting to be shown, oldest first; only the first one runs. @type {CastReveal[]} */
+  /** Opponent casts waiting to be shown, oldest first; only the first one runs. @type {PendingReveal[]} */
   #reveals = [];
   #animation;
 
@@ -67,7 +72,17 @@ export class MatchPresenter {
 
   /** @returns {CastReveal | null} the opponent's cast being played out right now, if any */
   get reveal() {
-    return this.#reveals[0] ?? null;
+    return this.#reveals[0]?.cast ?? null;
+  }
+
+  /**
+   * The life to show for a player: what it was before a revealed cast hit
+   * them until the reveal strikes, else the snapshot's.
+   * @param {Readonly<{ id: string, life: number }>} player
+   */
+  lifeFor(player) {
+    const held = this.#reveals.find((pending) => !pending.struck && pending.lives.has(player.id));
+    return held === undefined ? player.life : /** @type {number} */ (held.lives.get(player.id));
   }
 
   /** @param {string} instanceId */
@@ -102,10 +117,23 @@ export class MatchPresenter {
       }
     }
     if (animate) {
-      this.#enqueueFloats(events, layout);
-      this.#enqueueNudges(events, layout);
-      this.#enqueueReveals(events, snapshot, layout);
+      this.#enqueueEffects(events, snapshot, layout);
     }
+  }
+
+  /**
+   * Floats, nudges and the opponent's cast; what the cast did waits for its reveal to strike.
+   * @param {readonly Readonly<Record<string, unknown>>[]} events
+   * @param {Snapshot} snapshot
+   * @param {BoardLayout} layout
+   */
+  #enqueueEffects(events, snapshot, layout) {
+    const castAt = this.#enqueueReveal(events, snapshot, layout);
+    this.#enqueueFloats(castAt === -1 ? events : events.slice(0, castAt), layout);
+    if (castAt !== -1) {
+      this.#holdEffects(/** @type {PendingReveal} */ (this.#reveals.at(-1)), events.slice(castAt + 1), layout);
+    }
+    this.#enqueueNudges(events, layout);
   }
 
   /**
@@ -146,8 +174,13 @@ export class MatchPresenter {
     if (current === undefined) {
       return false;
     }
-    const changed = current.update(dtMs);
-    if (current.isDone) {
+    let changed = current.cast.update(dtMs);
+    if (!current.struck && (current.cast.frame.strike >= 1 || current.cast.isDone)) {
+      current.struck = true;
+      current.floats.forEach((spec) => this.#pushFloat(spec));
+      changed = true;
+    }
+    if (current.cast.isDone) {
       this.#reveals.shift();
     }
     return changed;
@@ -202,21 +235,42 @@ export class MatchPresenter {
    * @param {readonly Readonly<Record<string, unknown>>[]} events
    * @param {Snapshot} snapshot
    * @param {BoardLayout} layout
+   * @returns {number} where the revealed cast's CARD_PLAYED sits in `events`; -1 when nothing was revealed
    */
-  #enqueueReveals(events, snapshot, layout) {
+  #enqueueReveal(events, snapshot, layout) {
     const opponent = snapshot.players.find((player) => player.id === layout.opponent.id);
-    if (opponent === undefined) {
-      return;
+    if (opponent === undefined || this.#reveals.length >= MAX_REVEALS) {
+      return -1;
     }
-    for (const event of events) {
-      if (!isOpponentCast(event, opponent.id) || this.#reveals.length >= MAX_REVEALS) {
-        continue;
+    // One command plays one card, so a batch of events carries at most one cast.
+    const castAt = events.findIndex((event) => isOpponentCast(event, opponent.id));
+    const card = castAt === -1 ? null : findCard(snapshot, events[castAt].instanceId);
+    if (card === null) {
+      return -1;
+    }
+    const holdMs = this.#animation.longMs * (this.#reveals.length === 0 ? HOLD.alone : HOLD.queued);
+    const targets = this.#targetsOf(events[castAt], snapshot, layout);
+    const cast = new CastReveal({ card, caption: `${opponent.name} casts`, targets, ...revealPathFor(layout), animation: this.#animation, holdMs });
+    this.#reveals.push({ cast, floats: [], lives: new Map(), struck: false });
+    return castAt;
+  }
+
+  /**
+   * Holds back what a revealed cast did until it strikes: its floating
+   * numbers, and each player's life as it stood before the cast moved it.
+   * @param {PendingReveal} pending
+   * @param {readonly Readonly<Record<string, unknown>>[]} effects the events that followed the cast
+   * @param {BoardLayout} layout
+   */
+  #holdEffects(pending, effects, layout) {
+    for (const event of effects) {
+      const spec = this.#floatSpecFor(event, layout);
+      if (spec !== null) {
+        pending.floats.push(spec);
       }
-      const card = findCard(snapshot, event.instanceId);
-      if (card !== null) {
-        const holdMs = this.#animation.longMs * (this.#reveals.length === 0 ? HOLD.alone : HOLD.queued);
-        const targets = this.#targetsOf(event, snapshot, layout);
-        this.#reveals.push(new CastReveal({ card, caption: `${opponent.name} casts`, targets, ...revealPathFor(layout), animation: this.#animation, holdMs }));
+      const playerId = /** @type {string} */ (event.playerId);
+      if (event.type === GameEventType.LIFE_CHANGED && !pending.lives.has(playerId)) {
+        pending.lives.set(playerId, /** @type {number} */ (event.life) - /** @type {number} */ (event.delta));
       }
     }
   }
@@ -247,15 +301,34 @@ export class MatchPresenter {
    */
   #enqueueFloats(events, layout) {
     for (const event of events) {
-      const build = FLOAT_BUILDERS[/** @type {string} */ (event.type)];
-      if (build === undefined || this.#floats.length >= MAX_FLOATS) {
-        continue;
+      const spec = this.#floatSpecFor(event, layout);
+      if (spec !== null) {
+        this.#pushFloat(spec);
       }
-      const { id, text, colorKey } = build(event);
-      const anchor = typeof id === "string" ? this.#anchorFor(id, layout) : null;
-      if (anchor !== null) {
-        this.#floats.push({ spec: Object.freeze({ text, colorKey, x: anchor.x, y: anchor.y }), ageMs: 0, durationMs: this.#animation.longMs * 2 });
-      }
+    }
+  }
+
+  /**
+   * The floating text an event shows, anchored now: a creature it kills is
+   * off the board by the time a held float is released.
+   * @param {Readonly<Record<string, unknown>>} event
+   * @param {BoardLayout} layout
+   * @returns {FloatSpec | null}
+   */
+  #floatSpecFor(event, layout) {
+    const build = FLOAT_BUILDERS[/** @type {string} */ (event.type)];
+    if (build === undefined) {
+      return null;
+    }
+    const { id, text, colorKey } = build(event);
+    const anchor = typeof id === "string" ? this.#anchorFor(id, layout) : null;
+    return anchor === null ? null : Object.freeze({ text, colorKey, x: anchor.x, y: anchor.y });
+  }
+
+  /** @param {FloatSpec} spec */
+  #pushFloat(spec) {
+    if (this.#floats.length < MAX_FLOATS) {
+      this.#floats.push({ spec, ageMs: 0, durationMs: this.#animation.longMs * 2 });
     }
   }
 

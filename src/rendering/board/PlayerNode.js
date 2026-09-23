@@ -36,13 +36,16 @@ export class PlayerNode extends UiNode {
   highlight;
   /** @type {(playerId: string) => void} */
   onTap;
+  /** The life drawn in the crystal, read every frame: it may lag the snapshot while a cast plays out. @type {() => number} */
+  lifeShown;
 
   /**
-   * @param {{ player: PlayerView, rect: import("../../shared/geometry.js").Rect, isMe: boolean, isActive: boolean, highlight: string | null, onTap: (playerId: string) => void }} options
+   * @param {{ player: PlayerView, rect: import("../../shared/geometry.js").Rect, isMe: boolean, isActive: boolean, highlight: string | null, onTap: (playerId: string) => void, lifeShown?: () => number }} options
    */
-  constructor({ player, rect, isMe, isActive, highlight, onTap }) {
+  constructor({ player, rect, isMe, isActive, highlight, onTap, lifeShown = () => player.life }) {
     super({ id: player.id, ...rect, enabled: highlight === Highlight.TARGETABLE });
     this.player = player;
+    this.lifeShown = lifeShown;
     this.isMe = isMe;
     this.isActive = isActive;
     this.highlight = highlight;
@@ -110,14 +113,15 @@ export class PlayerNode extends UiNode {
     const area = this.bounds;
     const { colors } = theme;
     const center = { x: area.x + PAD + CRYSTAL_RADIUS, y: area.y + PAD + NAME_HEIGHT + 8 + CRYSTAL_RADIUS };
-    const color = this.player.life <= 5 ? colors.danger : colors.health;
+    const life = this.lifeShown();
+    const color = life <= 5 ? colors.danger : colors.health;
     const box = { x: center.x - CRYSTAL_RADIUS, y: center.y - CRYSTAL_RADIUS, width: CRYSTAL_RADIUS * 2, height: CRYSTAL_RADIUS * 2 };
     context.save();
     context.shadowColor = withAlpha(color, 0.75);
     context.shadowBlur = CRYSTAL_RADIUS * 0.6;
     drawGem(context, center, CRYSTAL_RADIUS, { fill: verticalGradient(context, box, [[0, shade(color, 0.25)], [1, shade(color, -0.55)]]), rim: colors.accent, highlight: withAlpha("#ffffff", 0.3), sides: 6, rimWidth: 2.5 });
     context.restore();
-    drawOutlinedText(context, String(this.player.life), box, { font: bodyFont(theme, CRYSTAL_RADIUS * 1.05, "bold"), color: colors.text, outline: withAlpha("#000000", 0.85), outlineWidth: 4 });
+    drawOutlinedText(context, String(life), box, { font: bodyFont(theme, CRYSTAL_RADIUS * 1.05, "bold"), color: colors.text, outline: withAlpha("#000000", 0.85), outlineWidth: 4 });
     const column = { x: box.x + box.width + 10, width: area.width - 2 * PAD - box.width - 10 };
     drawTextInRect(context, "life", { ...column, y: center.y - CRYSTAL_RADIUS + 2, height: 18 }, { font: fontFor(theme, "small"), color: colors.textMuted, align: "left" });
     drawTextInRect(context, `${this.player.resources.current} / ${this.player.resources.max}`, { ...column, y: center.y - 2, height: 22 }, { font: fontFor(theme, "body", "bold"), color: colors.resource, align: "left" });

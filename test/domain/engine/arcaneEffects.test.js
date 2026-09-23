@@ -125,3 +125,13 @@ describe("on_turn_start", () => {
     assert.equal(player(engine, P2).librarySize, 2, "only the draw; the sifter is back in hand");
   });
 });
+
+describe("drain", () => {
+  it("drains no more than the target creature's remaining health (Soul Drain on Ember Imp)", () => {
+    const { engine, id } = createScenario({ p1: { hand: ["soul_drain"], resources: 3, life: 10 }, p2: { battlefield: ["ember_imp"] } });
+    const result = engine.execute(playCard(P1, id(P1, HAND), [id(P2, BF)]));
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(player(engine, P2).battlefield.length, 0);
+    assert.equal(player(engine, P1).life, 11, "a 1-health creature yields 1 life, not 3");
+  });
+});

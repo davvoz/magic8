@@ -1,6 +1,7 @@
 /**
  * drain: deals `amount` damage to each target (creature or player) and the
- * source's controller gains life equal to the damage actually dealt.
+ * source's controller gains life equal to the damage actually dealt, capped
+ * per creature at the health it had left.
  */
 import { Targeting } from "../EffectRegistry.js";
 
@@ -15,7 +16,9 @@ export const drainEffect = Object.freeze({
     const amount = /** @type {number} */ (context.params.amount);
     let drained = 0;
     for (const creature of context.targetCreatures) {
-      drained += context.damageCreature(creature, amount);
+      // Overkill is not drained: a creature yields at most its remaining health.
+      const available = Math.max(0, creature.health);
+      drained += Math.min(context.damageCreature(creature, amount), available);
     }
     for (const player of context.targetPlayers) {
       drained += context.damagePlayer(player, amount);

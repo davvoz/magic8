@@ -68,6 +68,11 @@ describe("BasicAiController — main phase", () => {
     assert.deepEqual(ai.decide(heal.engine.getSnapshot(P1)).targets, [P1], "no damaged creature: heal self");
   });
 
+  it("keeps healing spells in hand when nothing of its own is hurt", () => {
+    const { engine } = createScenario({ p1: { hand: ["mending_herbs", "repair_drones"], battlefield: ["scrap_golem"], resources: 3 }, p2: { battlefield: ["ember_imp"] } });
+    assert.deepEqual(ai.decide(engine.getSnapshot(P1)), endPhase(P1), "full life, no wounded ally: healing is wasted");
+  });
+
   it("ends the phase in MAIN_1 and the turn in MAIN_2 when nothing is playable", () => {
     const { engine } = createScenario({ p1: { hand: ["blazing_titan"], resources: 1 } });
     assert.deepEqual(ai.decide(engine.getSnapshot(P1)), endPhase(P1));

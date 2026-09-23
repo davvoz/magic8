@@ -425,6 +425,31 @@ describe("MatchScene on the board", () => {
     advanceTo(() => scene.presenter.reveal === null, "gone");
   });
 
+  it("shows what the AI's cast did when its beam strikes, not while it is still in their hand", async () => {
+    const { scene, session } = await sceneFor({ p1: { life: 5 }, p2: { hand: ["blood_tithe"], resources: 2 } });
+    scene.onKey(key("e"));
+    await session.whenIdle();
+    assert.equal(session.snapshotFor(null).players[0].life, 3, "the drain has resolved");
+    const reveal = scene.presenter.reveal;
+    assert.equal(reveal?.card.name, "Blood Tithe");
+    assert.equal(byId(scene, P1).lifeShown(), 5, "life still reads as before the cast");
+    assert.ok(!scene.presenter.floats.some((float) => float.spec.text === "-2"), "no damage number yet");
+    const advanceTo = advancer(scene);
+    advanceTo(() => reveal.frame.strike === 1, "struck");
+    assert.equal(byId(scene, P1).lifeShown(), 3, "life drops as the beam lands");
+    assert.ok(scene.presenter.floats.some((float) => float.spec.text === "-2"), "with its number");
+  });
+
+  it("waits for the AI's lethal cast to play out before showing the result", async () => {
+    const { scene, session } = await sceneFor({ p1: { life: 2 }, p2: { hand: ["blood_tithe"], resources: 2 } });
+    scene.onKey(key("e"));
+    await session.whenIdle();
+    assert.equal(session.isOver, true);
+    assert.equal(scene.modal, null, "the killing spell is shown first");
+    advancer(scene)(() => scene.presenter.reveal === null, "played out");
+    assert.equal(scene.modal?.id, "gameOver");
+  });
+
   it("lets the human block by tapping the blocker then the attacker", async () => {
     const { scene, session } = await sceneFor({ p1: { battlefield: ["steel_sentinel"] }, p2: { battlefield: ["lava_brute"] } });
     scene.onKey(key("e"));

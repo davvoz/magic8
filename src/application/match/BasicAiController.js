@@ -9,7 +9,8 @@
  * - Main phases: play a card that wins on the spot if there is one, else the
  *   most expensive playable card, then move on. Damage goes to the face when
  *   that is lethal, else where it kills, removal (destroy, bounce) on the
- *   strongest enemy creature, buffs on the strongest ally.
+ *   strongest enemy creature, buffs on the strongest ally. Healing spells
+ *   stay in hand while nothing of its own is hurt.
  * - Attack with creatures that cannot be blocked and killed for free; attack
  *   with everything when unblocked damage would be lethal.
  * - Block to kill an attacker and survive, to trade evenly, or to chump when
@@ -104,8 +105,29 @@ function boardFor(snapshot, me) {
  * @returns {CardView | undefined}
  */
 function chooseCard(playable, legalMoves, board) {
-  const byCost = [...playable].sort((a, b) => b.cost - a.cost);
+  const byCost = [...playable].filter((card) => !isWastedHeal(card, legalMoves.targetOptions[card.instanceId], board)).sort((a, b) => b.cost - a.cost);
   return byCost.find((card) => faceDamage(card, legalMoves.targetOptions[card.instanceId], board) >= board.enemy.life) ?? byCost[0];
+}
+
+/**
+ * A spell that only heals is wasted when none of its targets is hurt:
+ * no wounded friendly creature and the AI already at full life.
+ * @param {CardView} card
+ * @param {readonly (readonly string[])[]} targetOptions
+ * @param {Board} board
+ */
+function isWastedHeal(card, targetOptions, board) {
+  const abilities = playAbilities(card);
+  if (card.type !== CardType.SPELL || abilities.length === 0 || abilities.some((ability) => ability.effect !== HEAL)) {
+    return false;
+  }
+  const wounded = new Set(board.me.battlefield.filter((creature) => creature.damage > 0).map((creature) => creature.instanceId));
+  if (board.me.life < board.me.maxLife) {
+    wounded.add(board.me.id);
+  }
+  const selfHealsItself = abilities.some((ability) => ability.target !== null && isAutomaticTarget(ability.target) && ability.target.owner === TargetOwner.ALLY);
+  const reachesWounded = targetOptions.some((options) => options.some((id) => wounded.has(id)));
+  return !(reachesWounded || (selfHealsItself && wounded.has(board.me.id)));
 }
 
 /**
@@ -218,7 +240,7 @@ function isDebuff(params) {
 function chooseAllyTarget(effect, { creatures, players, board }) {
   const allies = creatures.filter((creature) => creature.controllerId === board.me.id);
   if (effect === HEAL) {
-    return strongest(allies.filter((creature) => creature.damage > 0))?.instanceId ?? (players.includes(board.me.id) ? board.me.id : undefined);
+    return strongest(allies.filter((creature) => creature.damage > 0))?.instanceId ?? (players.includes(board.me.id) ? board.me.id : strongest(allies)?.instanceId);
   }
   if (effect === SACRIFICE) {
     return weakest(allies)?.instanceId;

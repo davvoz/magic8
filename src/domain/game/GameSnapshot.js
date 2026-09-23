@@ -72,12 +72,14 @@ export function projectCard(card) {
 /**
  * @param {import("./Player.js").Player} player
  * @param {boolean} revealHand
+ * @param {import("./GameRules.js").GameRules} rules
  */
-function projectPlayer(player, revealHand) {
+function projectPlayer(player, revealHand, rules) {
   return {
     id: player.id,
     name: player.name,
     life: player.life,
+    maxLife: rules.startingLife,
     resources: { current: player.resources.current, max: player.resources.max },
     librarySize: player.library.size,
     handSize: player.hand.size,
@@ -104,7 +106,7 @@ export function createSnapshot(state, perspectivePlayerId, rules) {
     isOver: state.isOver,
     winnerId: state.winnerId,
     endReason: state.endReason,
-    players: state.players.map((player) => projectPlayer(player, omniscient || player.id === perspectivePlayerId)),
+    players: state.players.map((player) => projectPlayer(player, omniscient || player.id === perspectivePlayerId, rules)),
     combat: state.combat.toPlain(),
     legalMoves: omniscient ? null : computeLegalMoves(state, perspectivePlayerId, rules),
   });

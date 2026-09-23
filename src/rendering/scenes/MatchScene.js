@@ -86,7 +86,9 @@ export class MatchScene extends Scene {
   /** @param {number} dtMs */
   update(dtMs) {
     const inputChanged = super.update(dtMs);
-    return this.#presenter.update(dtMs) || inputChanged;
+    const changed = this.#presenter.update(dtMs) || inputChanged;
+    this.#maybeShowGameOver();
+    return changed;
   }
 
   /** @param {CanvasRenderingContext2D} context */
@@ -160,7 +162,13 @@ export class MatchScene extends Scene {
     this.#log = [...this.#log, ...lines].slice(-MAX_LOG_LINES);
     this.#interaction.sync(snapshot);
     this.#rebuild();
-    if (snapshot.isOver && !this.#gameOverShown) {
+    this.#maybeShowGameOver();
+  }
+
+  /** The result waits for the opponent's last cast to play out: it is what ended the game. */
+  #maybeShowGameOver() {
+    const snapshot = this.#snapshot;
+    if (snapshot !== null && snapshot.isOver && !this.#gameOverShown && this.#presenter.reveal === null) {
       this.#gameOverShown = true;
       this.#showGameOver(snapshot);
     }
@@ -223,7 +231,7 @@ export class MatchScene extends Scene {
       if (player === undefined) {
         continue;
       }
-      this.root.add(new PlayerNode({ player, rect: seat.hud, isMe: seat === layout.me, isActive: snapshot.activePlayerId === player.id, highlight: interaction.highlightFor(player.id), onTap: (id) => this.#tap(id) }));
+      this.root.add(new PlayerNode({ player, rect: seat.hud, isMe: seat === layout.me, isActive: snapshot.activePlayerId === player.id, highlight: interaction.highlightFor(player.id), onTap: (id) => this.#tap(id), lifeShown: () => this.#presenter.lifeFor(player) }));
     }
   }
 
